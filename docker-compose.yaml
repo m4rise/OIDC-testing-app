@@ -1,0 +1,56 @@
+version: '3.9'
+
+networks:
+  traefik:
+    external: true
+
+services:
+  angular_front:
+    build:
+      context: ./front
+      target: dev
+      args:
+        - PROJECT_DIR = ${PROJECT_FRONT_DIR:-/src/app/front}
+    container_name: angular_front
+    environment:
+      NODE_ENV: ${NODE_ENV:-development}
+    volumes:
+      - ./front:${PROJECT_FRONT_DIR-/src/app/front}
+    ports:
+      - ${PORT_FRONT:-4200}:${PORT_FRONT:-4200}
+    command: "bash -c 'pnpm install && pnpm run start-docker-dev'"
+    labels:
+      traefik.enable: true
+      traefik.http.routers.angular_front.rule: Host(`front.localhost`)
+      traefik.http.routers.angular_front.entrypoints: websecure
+      traefik.http.services.angular_front.loadbalancer.server.port: ${PORT_FRONT:-4200}
+      traefik.http.routers.angular_front.tls: true
+      traefik.http.routers.angular_front.middlewares: "for-dev@file"
+    networks:
+      - traefik
+
+  node_server:
+    build:
+      context: ./back
+      target: dev
+      args:
+        - PROJECT_DIR = ${PROJECT_BACK_DIR:-/src/app/back}
+    container_name: node_server
+    environment:
+      NODE_ENV: ${PROJECT_BACK_DIR:-/src/app/back}
+    expose:
+      - ${PORT_BACK:-5000}
+    ports:
+      - ${PORT_BACK:-5000}:${PORT_BACK:-5000}
+    volumes:
+      - ./back:${PROJECT_BACK_DIR:-/src/app/back}
+    command: "bash -c 'pnpm install && pnpm run start:dev'"
+    labels:
+      traefik.enable: true
+      traefik.http.routers.nodejs.rule: Host(`node.localhost`)
+      traefik.http.routers.nodejs.entrypoints: websecure
+      traefik.http.services.nodejs.loadbalancer.server.port: ${PORT_BACK:-5000}
+      traefik.http.routers.nodejs.tls: true
+      traefik.http.routers.nodejs.middlewares: "for-dev@file"
+    networks:
+      - traefik
