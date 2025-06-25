@@ -1,5 +1,3 @@
-version: '3.9'
-
 networks:
   traefik:
     external: true
@@ -10,15 +8,19 @@ services:
       context: ./front
       target: dev
       args:
-        - PROJECT_DIR = ${PROJECT_FRONT_DIR:-/src/app/front}
+        - PROJECT_DIR=${PROJECT_FRONT_DIR:-/src/app/front}
     container_name: angular_front
     environment:
       NODE_ENV: ${NODE_ENV:-development}
     volumes:
-      - ./front:${PROJECT_FRONT_DIR-/src/app/front}
+      - ./front:${PROJECT_FRONT_DIR:-/src/app/front}
+      - /app/node_modules
     ports:
       - ${PORT_FRONT:-4200}:${PORT_FRONT:-4200}
-    command: "bash -c 'pnpm install && pnpm run start-docker-dev'"
+    working_dir: ${PROJECT_FRONT_DIR:-/src/app/front}
+    command: ["bash", "-c", "pnpm install && pnpm run start-docker-dev"]
+    depends_on:
+      - node_server
     labels:
       traefik.enable: true
       traefik.http.routers.angular_front.rule: Host(`front.localhost`)
@@ -34,16 +36,17 @@ services:
       context: ./back
       target: dev
       args:
-        - PROJECT_DIR = ${PROJECT_BACK_DIR:-/src/app/back}
+        - PROJECT_DIR=${PROJECT_BACK_DIR:-/src/app/back}
     container_name: node_server
     environment:
-      NODE_ENV: ${PROJECT_BACK_DIR:-/src/app/back}
+      NODE_ENV: ${NODE_ENV:-development}
     expose:
       - ${PORT_BACK:-5000}
     ports:
       - ${PORT_BACK:-5000}:${PORT_BACK:-5000}
     volumes:
       - ./back:${PROJECT_BACK_DIR:-/src/app/back}
+      - /app/node_modules
     command: "bash -c 'pnpm install && pnpm run start:dev'"
     labels:
       traefik.enable: true
