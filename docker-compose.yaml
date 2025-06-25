@@ -27,7 +27,6 @@ services:
       traefik.http.routers.angular_front.entrypoints: websecure
       traefik.http.services.angular_front.loadbalancer.server.port: ${PORT_FRONT:-4200}
       traefik.http.routers.angular_front.tls: true
-      traefik.http.routers.angular_front.middlewares: "for-dev@file"
     networks:
       - traefik
 
@@ -54,6 +53,5 @@ services:
       traefik.http.routers.nodejs.entrypoints: websecure
       traefik.http.services.nodejs.loadbalancer.server.port: ${PORT_BACK:-5000}
       traefik.http.routers.nodejs.tls: true
-      traefik.http.routers.nodejs.middlewares: "for-dev@file"
     networks:
       - traefik

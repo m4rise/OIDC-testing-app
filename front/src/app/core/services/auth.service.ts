@@ -18,6 +18,7 @@ export class AuthService {
   private _currentUser = signal<User | null>(null);
   private _isLoading = signal<boolean>(false);
   private _isInitialized = signal<boolean>(false);
+  private _initializationPromise: Promise<void> | null = null;
 
   // Public readonly signals
   readonly currentUser = this._currentUser.asReadonly();
@@ -30,25 +31,56 @@ export class AuthService {
   readonly userPermissions = computed(() => this._currentUser()?.permissions || []);
 
   constructor() {
-    this.initializeAuth();
+    // Don't initialize immediately to avoid circular dependency
+    // Manual initialization will be called when needed
+  }
+
+  /**
+   * Manual initialization method that can be called after app startup
+   * Returns the same promise if already initializing to prevent duplicate calls
+   */
+  initialize(): Promise<void> {
+    if (this._isInitialized()) {
+      return Promise.resolve();
+    }
+
+    if (this._initializationPromise) {
+      return this._initializationPromise;
+    }
+
+    this._initializationPromise = this.initializeAuth();
+    return this._initializationPromise;
   }
 
   /**
    * Initialize authentication state
    */
   private async initializeAuth(): Promise<void> {
+    // Skip initialization if already in progress or completed
+    if (this._isLoading() || this._isInitialized()) {
+      return;
+    }
+
     this._isLoading.set(true);
+    console.log('AuthService: Initializing authentication...');
 
     try {
       const sessionInfo = await this.getSessionInfo().toPromise();
+      console.log('AuthService: Session info received:', sessionInfo);
+
       if (sessionInfo?.isAuthenticated && sessionInfo.user) {
         this._currentUser.set(sessionInfo.user);
+        console.log('AuthService: User authenticated:', sessionInfo.user);
+      } else {
+        console.log('AuthService: No authenticated user found');
       }
     } catch (error) {
-      console.error('Failed to initialize auth:', error);
+      console.error('AuthService: Failed to initialize auth:', error);
     } finally {
       this._isLoading.set(false);
       this._isInitialized.set(true);
+      this._initializationPromise = null;
+      console.log('AuthService: Initialization complete');
     }
   }
 
@@ -56,9 +88,15 @@ export class AuthService {
    * Get current session information from backend
    */
   getSessionInfo(): Observable<SessionInfo | null> {
-    return this.http.get<SessionInfo>(`${environment.apiUrl}/auth/session`).pipe(
+    console.log('AuthService: Making session request to:', `${environment.apiUrl}/auth/session`);
+    return this.http.get<SessionInfo>(`${environment.apiUrl}/auth/session`, {
+      withCredentials: true  // Ensure cookies are sent
+    }).pipe(
+      tap(sessionInfo => {
+        console.log('AuthService: Session response received:', sessionInfo);
+      }),
       catchError(error => {
-        console.error('Session info error:', error);
+        console.error('AuthService: Session info error:', error);
         return of(null);
       })
     );

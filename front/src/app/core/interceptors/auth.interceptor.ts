@@ -5,11 +5,9 @@ import { catchError, finalize } from 'rxjs/operators';
 import { throwError } from 'rxjs';
 
 import { LoadingService } from '../services/loading.service';
-import { AuthService } from '../services/auth.service';
 
 export const authInterceptor: HttpInterceptorFn = (req, next) => {
   const loadingService = inject(LoadingService);
-  const authService = inject(AuthService);
   const router = inject(Router);
 
   // Start loading
@@ -27,17 +25,8 @@ export const authInterceptor: HttpInterceptorFn = (req, next) => {
     catchError((error: HttpErrorResponse) => {
       // Handle authentication errors
       if (error.status === 401) {
-        // Clear auth state and redirect to login
-        authService.refreshSession().subscribe({
-          next: (session) => {
-            if (!session?.isAuthenticated) {
-              router.navigate(['/auth/login']);
-            }
-          },
-          error: () => {
-            router.navigate(['/auth/login']);
-          }
-        });
+        // Redirect to login without calling AuthService to avoid circular dependency
+        router.navigate(['/auth/login']);
       }
 
       // Handle authorization errors

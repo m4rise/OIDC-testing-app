@@ -25,7 +25,7 @@ app.get('/health', (req, res) => {
 // Start server
 app.listen(PORT, () => {
   console.log(`🚀 Minimal server running on port ${PORT}`);
-  console.log(`🔗 Health check: http://localhost:${PORT}/health`);
+  console.log(`🔗 Health check: https://node.localhost/health`);
 });
 
 export default app;

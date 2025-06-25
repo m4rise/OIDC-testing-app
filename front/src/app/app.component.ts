@@ -1,4 +1,4 @@
-import { Component, computed, inject } from '@angular/core';
+import { Component, computed, inject, OnInit } from '@angular/core';
 
 import { RouterOutlet, Router } from '@angular/router';
 import { MatToolbarModule } from '@angular/material/toolbar';
@@ -109,7 +109,7 @@ import { LoadingService } from './core/services/loading.service';
     }
   `]
 })
-export class AppComponent {
+export class AppComponent implements OnInit {
   private router = inject(Router);
 
   authService = inject(AuthService);
@@ -120,6 +120,16 @@ export class AppComponent {
     const user = this.authService.currentUser();
     return user?.role === 'admin' || user?.role === 'moderator';
   });
+
+  ngOnInit(): void {
+    // Initialize auth service after component initialization
+    console.log('AppComponent: Initializing auth service...');
+    this.authService.initialize().then(() => {
+      console.log('AppComponent: Auth service initialization complete');
+    }).catch(error => {
+      console.error('AppComponent: Auth service initialization failed:', error);
+    });
+  }
 
   async logout(): Promise<void> {
     try {

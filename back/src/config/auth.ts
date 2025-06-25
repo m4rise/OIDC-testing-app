@@ -2,17 +2,27 @@ import passport from 'passport';
 import { Strategy as OpenIDConnectStrategy } from 'passport-openidconnect';
 import { AppDataSource } from '../data-source';
 import { User, UserRole } from '../entities/User';
+import { configureMockOIDC } from './mock-auth';
 
 // Configure OIDC Strategy
 export const configureOIDC = () => {
   const clientID = process.env.OIDC_CLIENT_ID;
   const clientSecret = process.env.OIDC_CLIENT_SECRET;
   const issuer = process.env.OIDC_ISSUER;
-  const callbackURL = process.env.OIDC_CALLBACK_URL || 'http://localhost:5000/api/auth/callback';
+  const callbackURL = process.env.OIDC_CALLBACK_URL || 'https://node.localhost/api/auth/callback';
+  const useMockOIDC = process.env.NODE_ENV === 'development' && process.env.USE_MOCK_OIDC === 'true';
+
+  // Use mock OIDC in development if enabled
+  if (useMockOIDC) {
+    console.log('🎭 Using Mock OIDC Provider for development');
+    configureMockOIDC();
+    return;
+  }
 
   if (!clientID || !clientSecret || !issuer) {
     console.warn('OIDC configuration is incomplete. Skipping OIDC strategy configuration.');
     console.warn('To enable OIDC authentication, set OIDC_CLIENT_ID, OIDC_CLIENT_SECRET, and OIDC_ISSUER environment variables.');
+    console.warn('To use Mock OIDC for development, set USE_MOCK_OIDC=true in your .env file.');
     return;
   }
 
