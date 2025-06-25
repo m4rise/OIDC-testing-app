@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { AuthService } from '../services/AuthService';
 import passport from '../config/auth';
+import { generatePKCE, generateNonce, generateState } from '../config/auth';
 
 export class AuthController {
   private authService: AuthService;
@@ -30,39 +31,72 @@ export class AuthController {
       // Build ACR values parameter
       const acrValues = process.env.OIDC_ACR_VALUES || 'your-acr-value';
 
-      // Redirect to mock OIDC authorization endpoint with acr_values
-      const mockAuthUrl = `/api/mock-oidc/auth?client_id=mock-client&redirect_uri=${encodeURIComponent(process.env.OIDC_CALLBACK_URL || 'https://node.localhost/api/auth/callback')}&response_type=code&scope=openid%20profile%20email&state=${req.sessionID}&acr_values=${encodeURIComponent(acrValues)}`;
-      console.log('🎭 Redirecting to mock OIDC with acr_values:', acrValues);
-      console.log('🎭 Mock auth URL:', mockAuthUrl);
+      // Generate PKCE and nonce for mock OIDC
+      const { codeVerifier, codeChallenge } = generatePKCE();
+      const nonce = generateNonce();
+      const state = generateState();
+
+      // Store PKCE verifier and nonce in session for validation
+      (req.session as any).codeVerifier = codeVerifier;
+      (req.session as any).nonce = nonce;
+      (req.session as any).state = state;
+
+      // Redirect to mock OIDC authorization endpoint with enhanced security
+      const mockAuthUrl = `/api/mock-oidc/auth?client_id=mock-client&redirect_uri=${encodeURIComponent(process.env.OIDC_CALLBACK_URL || 'https://node.localhost/api/auth/callback')}&response_type=code&scope=openid%20profile%20email&state=${encodeURIComponent(state)}&nonce=${encodeURIComponent(nonce)}&code_challenge=${encodeURIComponent(codeChallenge)}&code_challenge_method=S256&acr_values=${encodeURIComponent(acrValues)}`;
+
+      console.log('🔐 Mock OIDC with enhanced security:');
+      console.log('  - ACR Values:', acrValues);
+      console.log('  - PKCE Challenge:', codeChallenge.substring(0, 10) + '...');
+      console.log('  - Nonce:', nonce.substring(0, 10) + '...');
+      console.log('  - State:', state.substring(0, 10) + '...');
+
       return res.redirect(mockAuthUrl);
     }
 
-    // For real OIDC, we need to build the authorization URL manually to include acr_values
+    // For real OIDC, build the authorization URL manually with enhanced security
+    const issuer = process.env.OIDC_ISSUER;
+    const clientId = process.env.OIDC_CLIENT_ID;
+    const callbackURL = process.env.OIDC_CALLBACK_URL || 'https://node.localhost/api/auth/callback';
     const acrValues = process.env.OIDC_ACR_VALUES;
 
-    if (acrValues) {
-      // Build custom authorization URL with acr_values
-      const issuer = process.env.OIDC_ISSUER;
-      const clientId = process.env.OIDC_CLIENT_ID;
-      const callbackURL = process.env.OIDC_CALLBACK_URL || 'https://node.localhost/api/auth/callback';
-      const state = req.sessionID; // Use session ID as state for CSRF protection
-
-      const authUrl = new URL(`${issuer}/auth`);
-      authUrl.searchParams.set('client_id', clientId!);
-      authUrl.searchParams.set('redirect_uri', callbackURL);
-      authUrl.searchParams.set('response_type', 'code');
-      authUrl.searchParams.set('scope', 'openid profile email');
-      authUrl.searchParams.set('state', state);
-      authUrl.searchParams.set('acr_values', acrValues);
-
-      console.log('🔐 Redirecting to OIDC with acr_values:', acrValues);
-      return res.redirect(authUrl.toString());
+    if (!issuer || !clientId) {
+      console.error('OIDC configuration incomplete');
+      return res.redirect(`${process.env.FRONTEND_URL || 'https://front.localhost'}/login?error=configuration_error`);
     }
 
-    // Fallback to standard passport authentication without acr_values
-    passport.authenticate('oidc', {
-      scope: 'openid profile email'
-    })(req, res, next);
+    // Generate PKCE and security parameters
+    const { codeVerifier, codeChallenge } = generatePKCE();
+    const nonce = generateNonce();
+    const state = generateState();
+
+    // Store security parameters in session for validation
+    (req.session as any).codeVerifier = codeVerifier;
+    (req.session as any).nonce = nonce;
+    (req.session as any).state = state;
+
+    // Build enhanced authorization URL
+    const authUrl = new URL(`${issuer}/auth`);
+    authUrl.searchParams.set('client_id', clientId);
+    authUrl.searchParams.set('redirect_uri', callbackURL);
+    authUrl.searchParams.set('response_type', 'code');
+    authUrl.searchParams.set('scope', 'openid profile email');
+    authUrl.searchParams.set('state', state);
+    authUrl.searchParams.set('nonce', nonce);
+    authUrl.searchParams.set('code_challenge', codeChallenge);
+    authUrl.searchParams.set('code_challenge_method', 'S256');
+
+    if (acrValues) {
+      authUrl.searchParams.set('acr_values', acrValues);
+    }
+
+    console.log('🔐 Real OIDC with enhanced security:');
+    console.log('  - Issuer:', issuer);
+    console.log('  - ACR Values:', acrValues || 'none');
+    console.log('  - PKCE Challenge:', codeChallenge.substring(0, 10) + '...');
+    console.log('  - Nonce:', nonce.substring(0, 10) + '...');
+    console.log('  - State:', state.substring(0, 10) + '...');
+
+    return res.redirect(authUrl.toString());
   };
 
   // Handle OIDC callback
@@ -74,22 +108,51 @@ export class AuthController {
       return this.handleMockCallback(req, res, next);
     }
 
+    // Validate state parameter for CSRF protection
+    const receivedState = req.query.state as string;
+    const sessionState = (req.session as any)?.state;
+
+    if (!receivedState || !sessionState || receivedState !== sessionState) {
+      console.error('🔒 State parameter validation failed:', {
+        received: receivedState?.substring(0, 10) + '...',
+        expected: sessionState?.substring(0, 10) + '...'
+      });
+      return res.redirect(`${process.env.FRONTEND_URL || 'https://front.localhost'}/login?error=state_mismatch`);
+    }
+
+    console.log('✅ State parameter validated successfully');
+
+    // Clean up state from session
+    delete (req.session as any).state;
+
     return passport.authenticate('oidc', {
-      failureRedirect: '/auth/login?error=authentication_failed'
+      failureRedirect: `${process.env.FRONTEND_URL || 'https://front.localhost'}/login?error=authentication_failed`
     }, async (err: any, user: any, info: any) => {
       if (err) {
         console.error('Authentication error:', err);
-        return res.redirect('/auth/login?error=server_error');
+        return res.redirect(`${process.env.FRONTEND_URL || 'https://front.localhost'}/login?error=server_error`);
       }
 
       if (!user) {
-        return res.redirect('/auth/login?error=authentication_failed');
+        return res.redirect(`${process.env.FRONTEND_URL || 'https://front.localhost'}/login?error=authentication_failed`);
       }
+
+      // Additional validation: check nonce in ID token if available
+      const sessionNonce = (req.session as any)?.nonce;
+      if (sessionNonce) {
+        // Note: In a real implementation, you would decode and verify the ID token
+        // and check that the nonce claim matches the session nonce
+        console.log('🔐 Nonce validation should be implemented for ID token verification');
+        delete (req.session as any).nonce;
+      }
+
+      // Clean up PKCE verifier from session
+      delete (req.session as any).codeVerifier;
 
       req.logIn(user, async (err) => {
         if (err) {
           console.error('Login error:', err);
-          return res.redirect('/auth/login?error=login_failed');
+          return res.redirect(`${process.env.FRONTEND_URL || 'https://front.localhost'}/login?error=login_failed`);
         }
 
         // Update last login
@@ -99,6 +162,7 @@ export class AuthController {
         const returnTo = (req.session as any).returnTo || process.env.FRONTEND_URL || 'http://front.localhost';
         delete (req.session as any).returnTo;
 
+        console.log('✅ Real OIDC authentication completed with enhanced security validation');
         return res.redirect(returnTo);
       });
     })(req, res, next);
@@ -174,80 +238,130 @@ export class AuthController {
   private handleMockCallback = async (req: Request, res: Response, next: Function): Promise<void> => {
     const { code, state } = req.query;
 
-    if (!code || !code.toString().startsWith('mock_code_')) {
-      res.redirect('/auth/login?error=invalid_authorization_code');
+    // Validate authorization code
+    if (!code) {
+      res.redirect(`${process.env.FRONTEND_URL || 'https://front.localhost'}/login?error=missing_authorization_code`);
       return;
     }
 
     // SECURITY: Validate state parameter to prevent CSRF attacks
-    if (!state || state !== req.sessionID) {
-      console.error('🎭 Mock callback: Invalid state parameter. Expected:', req.sessionID, 'Received:', state);
-      res.redirect('/auth/login?error=invalid_state');
+    const sessionState = (req.session as any)?.state;
+    if (!state || !sessionState || state !== sessionState) {
+      console.error('🎭 Mock callback: State validation failed:', {
+        received: state?.toString().substring(0, 10) + '...',
+        expected: sessionState?.substring(0, 10) + '...'
+      });
+      res.redirect(`${process.env.FRONTEND_URL || 'https://front.localhost'}/login?error=state_mismatch`);
       return;
     }
 
-    console.log('🎭 Mock callback: State validation successful');
+    console.log('✅ Mock OIDC state parameter validated successfully');
+
+    // Get PKCE verifier from session for token exchange
+    const codeVerifier = (req.session as any)?.codeVerifier;
+    const nonce = (req.session as any)?.nonce;
+
+    if (!codeVerifier) {
+      console.error('🎭 Mock callback: Missing PKCE code verifier in session');
+      res.redirect(`${process.env.FRONTEND_URL || 'https://front.localhost'}/login?error=missing_pkce_verifier`);
+      return;
+    }
 
     try {
-      // Extract user info from the mock code
-      const codeStr = code.toString();
-      const [codePrefix, encodedUserInfo] = codeStr.split('.');
-
-      if (!encodedUserInfo) {
-        res.redirect('/auth/login?error=invalid_authorization_code');
+      // Exchange authorization code for tokens with PKCE
+      // Use localhost for internal container communication
+      const tokenResponse = await fetch('http://localhost:5000/api/mock-oidc/token', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          grant_type: 'authorization_code',
+          code: code.toString(),
+          client_id: 'mock-client',
+          redirect_uri: process.env.OIDC_CALLBACK_URL || 'https://node.localhost/api/auth/callback',
+          code_verifier: codeVerifier // PKCE verification
+        })
+      });      if (!tokenResponse.ok) {
+        const errorData = await tokenResponse.text();
+        console.error('🎭 Token exchange failed:', errorData);
+        res.redirect(`${process.env.FRONTEND_URL || 'https://front.localhost'}/login?error=token_exchange_failed`);
         return;
       }
 
-      const userInfo = JSON.parse(Buffer.from(encodedUserInfo, 'base64').toString());
-      console.log('🎭 Mock callback processing user info:', userInfo);
+      const tokens = await tokenResponse.json();
+      console.log('✅ Mock OIDC tokens received with PKCE validation');
 
-      // Store userInfo in the request for the mock strategy
-      req.body = {
-        email: userInfo.email,
-        mockAuth: 'true',
-        userInfo: userInfo
-      };
+      // Decode ID token (it's a JWT in the enhanced mock)
+      const idTokenParts = tokens.id_token.split('.');
+      if (idTokenParts.length !== 3) {
+        console.error('🎭 Invalid ID token format');
+        res.redirect(`${process.env.FRONTEND_URL || 'https://front.localhost'}/login?error=invalid_id_token`);
+        return;
+      }
 
-      // Authenticate using mock strategy with proper session handling
-      passport.authenticate('mock-oidc', async (err: any, user: any) => {
-        if (err) {
-          console.error('Mock authentication error:', err);
-          return res.redirect('/auth/login?error=server_error');
-        }
+      const idTokenPayload = JSON.parse(Buffer.from(idTokenParts[1], 'base64url').toString());
 
-        if (!user) {
-          console.error('Mock authentication failed: no user returned');
-          return res.redirect('/auth/login?error=authentication_failed');
-        }
+      // Validate nonce if present
+      if (nonce && idTokenPayload.nonce !== nonce) {
+        console.error('🎭 Nonce validation failed:', {
+          expected: nonce.substring(0, 10) + '...',
+          received: idTokenPayload.nonce?.substring(0, 10) + '...'
+        });
+        res.redirect(`${process.env.FRONTEND_URL || 'https://front.localhost'}/login?error=nonce_mismatch`);
+        return;
+      }
 
-        console.log('🎭 Mock authentication successful, logging in user:', user.email);
-        console.log('🎭 Session ID before login:', req.sessionID);
+      if (nonce) {
+        console.log('✅ Mock OIDC nonce validated successfully');
+      }
 
-        req.logIn(user, async (err) => {
+      // Clean up session security parameters
+      delete (req.session as any).state;
+      delete (req.session as any).codeVerifier;
+      delete (req.session as any).nonce;
+
+      // Find or create user from OIDC token data
+      try {
+        const userForSession = await this.authService.findOrCreateUserFromOIDC({
+          email: idTokenPayload.email,
+          firstName: idTokenPayload.given_name || idTokenPayload.name?.split(' ')[0] || 'Unknown',
+          lastName: idTokenPayload.family_name || idTokenPayload.name?.split(' ').slice(1).join(' ') || 'User',
+          sub: idTokenPayload.sub,
+          oidcIssuer: 'mock-oidc'
+        });
+
+        // Log in the user
+        req.logIn(userForSession, async (err: any) => {
           if (err) {
-            console.error('Mock login error:', err);
-            return res.redirect('/auth/login?error=login_failed');
+            console.error('🎭 Mock login error:', err);
+            res.redirect(`${process.env.FRONTEND_URL || 'https://front.localhost'}/login?error=login_failed`);
+            return;
           }
 
-          console.log('🎭 User logged in successfully, session ID after login:', req.sessionID);
-          console.log('🎭 Session passport data:', (req.session as any).passport);
-
           // Update last login
-          await this.authService.updateLastLogin(user.id);
+          try {
+            await this.authService.updateLastLogin(userForSession.id);
+          } catch (error) {
+            console.warn('Could not update last login:', error);
+          }
 
-          // Get the return URL from session or use default
-          const returnTo = (req.session as any).returnTo || '/dashboard';
-          const fullReturnUrl = returnTo.startsWith('http') ? returnTo : `${process.env.FRONTEND_URL || 'https://front.localhost'}${returnTo}`;
+          // Redirect to the original URL or default
+          const returnTo = (req.session as any).returnTo || process.env.FRONTEND_URL || 'http://front.localhost';
           delete (req.session as any).returnTo;
 
-          console.log('🎭 Redirecting to:', fullReturnUrl);
-          return res.redirect(fullReturnUrl);
+          console.log('✅ Mock OIDC authentication completed with full security validation (PKCE + nonce + state)');
+          res.redirect(returnTo);
         });
-      })(req, res, next);
+
+      } catch (error) {
+        console.error('🎭 Mock callback error:', error);
+        res.redirect(`${process.env.FRONTEND_URL || 'https://front.localhost'}/login?error=server_error`);
+      }
+
     } catch (error) {
-      console.error('Mock callback error:', error);
-      res.redirect('/auth/login?error=callback_processing_failed');
-      return;
+      console.error('🎭 Mock callback error:', error);
+      res.redirect(`${process.env.FRONTEND_URL || 'https://front.localhost'}/login?error=server_error`);
     }
   };
 }

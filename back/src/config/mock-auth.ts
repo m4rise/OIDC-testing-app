@@ -12,10 +12,10 @@ export interface MockUser {
   sub: string;
 }
 
-// Mock users for development
+// Mock users for development (using UUID format for compatibility with database)
 const mockUsers: MockUser[] = [
   {
-    id: '1',
+    id: '550e8400-e29b-41d4-a716-446655440001',
     email: 'admin@example.com',
     firstName: 'Admin',
     lastName: 'User',
@@ -23,7 +23,7 @@ const mockUsers: MockUser[] = [
     sub: 'mock-admin-123'
   },
   {
-    id: '2',
+    id: '550e8400-e29b-41d4-a716-446655440002',
     email: 'user@example.com',
     firstName: 'Regular',
     lastName: 'User',
@@ -31,7 +31,7 @@ const mockUsers: MockUser[] = [
     sub: 'mock-user-456'
   },
   {
-    id: '3',
+    id: '550e8400-e29b-41d4-a716-446655440003',
     email: 'manager@example.com',
     firstName: 'Manager',
     lastName: 'User',
@@ -142,6 +142,22 @@ export const configureMockOIDC = () => {
   // Deserialize user from session
   passport.deserializeUser(async (id: string, done) => {
     try {
+      // Check if this is a mock user ID first (for development)
+      const mockUser = mockUsers.find(u => u.id === id);
+      if (mockUser) {
+        // Return mock user with database-compatible structure
+        const userForSession = {
+          ...mockUser,
+          isActive: true,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          lastLoginAt: new Date(),
+          hasPermission: () => true // Mock permission check
+        };
+        return done(null, userForSession);
+      }
+
+      // Otherwise, look up real user in database
       const userRepository = AppDataSource.getRepository(User);
       const user = await userRepository.findOne({ where: { id } });
       done(null, user);

@@ -1,8 +1,24 @@
 import passport from 'passport';
 import { Strategy as OpenIDConnectStrategy } from 'passport-openidconnect';
+import crypto from 'crypto';
 import { AppDataSource } from '../data-source';
 import { User, UserRole } from '../entities/User';
 import { configureMockOIDC } from './mock-auth';
+
+// PKCE and nonce generation utilities
+export const generatePKCE = () => {
+  const codeVerifier = crypto.randomBytes(32).toString('base64url');
+  const codeChallenge = crypto.createHash('sha256').update(codeVerifier).digest('base64url');
+  return { codeVerifier, codeChallenge };
+};
+
+export const generateNonce = () => {
+  return crypto.randomBytes(16).toString('base64url');
+};
+
+export const generateState = () => {
+  return crypto.randomBytes(16).toString('base64url');
+};
 
 // Configure OIDC Strategy
 export const configureOIDC = () => {
@@ -36,7 +52,7 @@ export const configureOIDC = () => {
     clientID,
     clientSecret,
     callbackURL,
-    scope: 'openid profile email',
+    scope: 'openid profile email'
   }, async (issuer: string, profile: any, done: Function) => {
     try {
       const userRepository = AppDataSource.getRepository(User);
