@@ -87,12 +87,13 @@ export const configureMockOIDC = () => {
 
       if (!user) {
         // Create new user from mock data
+        const mockIssuer = process.env.MOCK_OIDC_ISSUER || 'https://node.localhost/api/mock-oidc';
         user = userRepository.create({
           email: mockUser.email,
           firstName: mockUser.firstName,
           lastName: mockUser.lastName,
           oidcSubject: mockUser.sub,
-          oidcIssuer: 'mock-oidc-provider',
+          oidcIssuer: mockIssuer,
           oidcProfile: {
             sub: mockUser.sub,
             email: mockUser.email,
@@ -106,8 +107,9 @@ export const configureMockOIDC = () => {
         });
       } else {
         // Update existing user
+        const mockIssuer = process.env.MOCK_OIDC_ISSUER || 'https://node.localhost/api/mock-oidc';
         user.oidcSubject = mockUser.sub;
-        user.oidcIssuer = 'mock-oidc-provider';
+        user.oidcIssuer = mockIssuer;
         user.oidcProfile = {
           sub: mockUser.sub,
           email: mockUser.email,

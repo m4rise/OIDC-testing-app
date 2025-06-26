@@ -133,10 +133,32 @@ export class AppComponent implements OnInit {
 
   async logout(): Promise<void> {
     try {
-      await this.authService.logout();
-      this.router.navigate(['/auth/login']);
+      console.log('🚪 Logout button clicked');
+
+      // Subscribe to the logout observable
+      this.authService.logout().subscribe({
+        next: (response) => {
+          console.log('✅ Logout successful:', response);
+
+          // Navigate to login page
+          this.router.navigate(['/auth/login']);
+
+          // If there's a logout URL from the backend, redirect there instead
+          if (response.redirectUrl) {
+            console.log('🔗 Redirecting to logout URL:', response.redirectUrl);
+            window.location.href = response.redirectUrl;
+          }
+        },
+        error: (error) => {
+          console.error('❌ Logout error:', error);
+          // Still navigate to login even if logout fails
+          this.router.navigate(['/auth/login']);
+        }
+      });
     } catch (error) {
       console.error('Logout error:', error);
+      // Fallback navigation
+      this.router.navigate(['/auth/login']);
     }
   }
 }

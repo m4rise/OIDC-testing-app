@@ -96,6 +96,7 @@ export class AuthService {
     lastName: string;
     sub: string;
     oidcIssuer?: string;
+    fullProfile?: Record<string, any>; // ← Add the full profile data
   }): Promise<User> {
     const oidcIssuer = userInfo.oidcIssuer || 'mock-oidc';
 
@@ -110,6 +111,7 @@ export class AuthService {
         await this.userRepository.update(existingUser.id, {
           oidcSubject: userInfo.sub,
           oidcIssuer: oidcIssuer,
+          oidcProfile: userInfo.fullProfile, // ← Store the profile
           lastLoginAt: new Date()
         });
         // Refetch the updated user
@@ -124,6 +126,7 @@ export class AuthService {
           role: defaultRole,
           oidcSubject: userInfo.sub,
           oidcIssuer: oidcIssuer,
+          oidcProfile: userInfo.fullProfile, // ← Store the profile
           isActive: true,
           lastLoginAt: new Date(),
         });
@@ -131,8 +134,9 @@ export class AuthService {
         console.log(`✅ Created new user from OIDC: ${user.email} with role: ${user.role}`);
       }
     } else {
-      // Update existing OIDC user's last login
+      // Update existing OIDC user's profile and last login
       await this.userRepository.update(user.id, {
+        oidcProfile: userInfo.fullProfile || user.oidcProfile, // ← Update profile if provided
         lastLoginAt: new Date()
       });
       user = await this.userRepository.findById(user.id) || user;
@@ -153,5 +157,69 @@ export class AuthService {
       return UserRole.MODERATOR;
     }
     return UserRole.USER; // Default role
+  }
+
+  /**
+   * Refresh user profile from OIDC provider
+   * Call this when you suspect user permissions have changed
+   */
+  async refreshOIDCProfile(userId: string): Promise<User | null> {
+    const user = await this.userRepository.findById(userId);
+    if (!user || !user.oidcSubject || !user.oidcIssuer) {
+      return null;
+    }
+
+    try {
+      // For production OIDC providers, you would call their /userinfo endpoint
+      const userInfoUrl = `${user.oidcIssuer}/userinfo`;
+
+      // Note: This requires an access token - you'd need to store refresh tokens
+      // or implement OAuth2 client credentials flow
+      console.log(`🔄 Would refresh profile for ${user.email} from ${userInfoUrl}`);
+
+      // For now, return user as-is since this requires additional OAuth2 setup
+      return user;
+    } catch (error) {
+      console.error('Failed to refresh OIDC profile:', error);
+      return user;
+    }
+  }
+
+  /**
+   * Check if user profile needs refresh based on age
+   */
+  shouldRefreshProfile(user: User, maxAgeHours: number = 24): boolean {
+    if (!user.lastLoginAt) return true;
+
+    const ageHours = (Date.now() - user.lastLoginAt.getTime()) / (1000 * 60 * 60);
+    return ageHours > maxAgeHours;
+  }
+
+  /**
+   * Extract permissions from OIDC profile
+   */
+  getOIDCPermissions(user: User): string[] {
+    const profile = user.oidcProfile;
+    if (!profile) return [];
+
+    // Extract permissions from various OIDC claims
+    const permissions: string[] = [];
+
+    // From groups claim
+    if (profile.groups && Array.isArray(profile.groups)) {
+      permissions.push(...profile.groups);
+    }
+
+    // From roles claim
+    if (profile.roles && Array.isArray(profile.roles)) {
+      permissions.push(...profile.roles);
+    }
+
+    // From custom claims
+    if (profile.permissions && Array.isArray(profile.permissions)) {
+      permissions.push(...profile.permissions);
+    }
+
+    return [...new Set(permissions)]; // Remove duplicates
   }
 }

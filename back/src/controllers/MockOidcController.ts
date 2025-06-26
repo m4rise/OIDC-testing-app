@@ -620,4 +620,15 @@ export class MockOidcController {
       token_type: 'Bearer'
     });
   };
+
+  constructor() {
+    // Set the public key in environment for JWT validation fallback
+    process.env.MOCK_OIDC_PUBLIC_KEY = this.keyPair.publicKey;
+    console.log('🎭 Mock OIDC public key set in environment for JWT validation');
+  }
+
+  // Get public key (for debugging/testing)
+  public getPublicKey(): string {
+    return this.keyPair.publicKey;
+  }
 }

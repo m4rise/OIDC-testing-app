@@ -17,6 +17,9 @@ import authRoutes from './routes/auth';
 import userRoutes from './routes/users';
 import mockOidcRoutes from './routes/mock-oidc';
 
+// Import security middleware
+import { sessionSecurity } from './middleware/security';
+
 // Load environment variables
 dotenv.config();
 
@@ -61,6 +64,11 @@ if (disableCSP && isDevelopment) {
   app.use(helmet({
     contentSecurityPolicy: false,
     crossOriginEmbedderPolicy: false,
+    // Enhanced security headers for development
+    xFrameOptions: { action: 'deny' },
+    xContentTypeOptions: true,
+    xXssProtection: true,
+    referrerPolicy: { policy: 'strict-origin-when-cross-origin' }
   }));
 } else {
   app.use(helmet({
@@ -78,6 +86,16 @@ if (disableCSP && isDevelopment) {
       },
     },
     crossOriginEmbedderPolicy: false,
+    // Enhanced security headers for production
+    xFrameOptions: { action: 'deny' },
+    xContentTypeOptions: true,
+    xXssProtection: true,
+    referrerPolicy: { policy: 'strict-origin-when-cross-origin' },
+    hsts: {
+      maxAge: 31536000,
+      includeSubDomains: true,
+      preload: true
+    }
   }));
 }
 
@@ -85,40 +103,7 @@ if (disableCSP && isDevelopment) {
 app.use(compression());
 app.use(morgan('combined'));
 
-// Custom CORS middleware to ensure proper headers for credentials
-app.use((req, res, next) => {
-  const origin = req.headers.origin;
-  const allowedOrigins = [
-    'https://front.localhost',
-    'http://front.localhost',
-    'https://node.localhost', // Allow same-origin requests for mock OIDC
-    'http://node.localhost',
-    process.env.FRONTEND_URL
-  ].filter(Boolean);
-
-  // Set CORS headers
-  if (origin && allowedOrigins.includes(origin)) {
-    res.header('Access-Control-Allow-Origin', origin);
-  } else if (!origin || origin === 'null') {
-    // For requests without origin or null origin (direct browser navigation, form submissions)
-    res.header('Access-Control-Allow-Origin', '*');
-  }
-
-  res.header('Access-Control-Allow-Credentials', 'true');
-  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
-  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
-  res.header('Access-Control-Expose-Headers', 'Set-Cookie');
-
-  // Handle preflight requests
-  if (req.method === 'OPTIONS') {
-    res.status(200).end();
-    return;
-  }
-
-  next();
-});
-
-// CORS configuration (backup)
+// CORS configuration - single comprehensive setup
 app.use(cors({
   origin: function (origin, callback) {
     // Allow requests with no origin or null origin (like direct browser navigation, form submissions)
@@ -150,8 +135,9 @@ app.use(cors({
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
-// Session configuration
+// Session configuration with enhanced security
 const encodedPassword = encodeURIComponent(process.env.POSTGRES_PASSWORD || '');
+
 app.use(session({
   store: new pgSession({
     conString: `postgresql://${process.env.POSTGRES_USER}:${encodedPassword}@${process.env.PG_HOST}:${process.env.PG_PORT}/${process.env.POSTGRES_DB}`,
@@ -160,23 +146,32 @@ app.use(session({
   }),
   secret: process.env.SESSION_SECRET || 'your-secret-key-change-in-production',
   resave: false,
-  saveUninitialized: false, // Create sessions immediately for better debugging
-  rolling: false, // Don't reset expiration on every request
+  saveUninitialized: false, // Don't create sessions for unauthenticated users
+  rolling: true, // Reset expiration on activity (sliding session)
   cookie: {
-    secure: true, // Set to true since we're using HTTPS through Traefik
-    httpOnly: false, // Set to false temporarily for debugging - we can see cookies in browser dev tools
-    maxAge: 24 * 60 * 60 * 1000, // 24 hours
-    sameSite: 'none', // Use 'none' for cross-origin requests with secure=true
-    path: '/', // Ensure cookie is available for all paths
-    // Remove domain to let browser handle it naturally
+    secure: true, // HTTPS only - critical for production
+    httpOnly: true, // Prevent XSS attacks by blocking JavaScript access
+    maxAge: isDevelopment
+      ? 24 * 60 * 60 * 1000 // 24 hours in development for convenience
+      : 8 * 60 * 60 * 1000, // 8 hours in production for security
+    sameSite: isDevelopment
+      ? 'none' // Allow cross-origin in development (front.localhost <-> node.localhost)
+      : 'strict', // Strong CSRF protection in production (same domain)
+    path: '/', // Cookie available for all app paths
+    domain: isDevelopment ? undefined : process.env.COOKIE_DOMAIN, // Explicit domain in production
   },
-  name: 'connect.sid', // Use default session cookie name for better compatibility
+  name: isDevelopment
+    ? 'connect.sid' // Default name for development
+    : process.env.SESSION_COOKIE_NAME || 'app_session', // Custom name in production
   proxy: true, // Trust proxy headers from Traefik
 }));
 
 // Passport middleware
 app.use(passport.initialize());
 app.use(passport.session());
+
+// Enhanced security middleware - only session security (headers handled by Helmet)
+app.use(sessionSecurity);
 
 // Debug middleware - log session info for troubleshooting
 if (process.env.NODE_ENV === 'development') {

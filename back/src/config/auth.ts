@@ -52,8 +52,12 @@ export const configureOIDC = () => {
     clientID,
     clientSecret,
     callbackURL,
-    scope: 'openid profile email'
-  }, async (issuer: string, profile: any, done: Function) => {
+    scope: 'openid profile email',
+    // Enable built-in security features
+    nonce: true as any,                             // Automatic nonce generation and validation (type override needed)
+    acrValues: process.env.OIDC_ACR_VALUES,        // Authentication context class reference
+    passReqToCallback: true                        // Pass request to callback for additional context
+  }, async (req: any, issuer: string, profile: any, done: Function) => {
     try {
       const userRepository = AppDataSource.getRepository(User);
 
@@ -91,9 +95,32 @@ export const configureOIDC = () => {
           user.oidcProfile = profile._json || profile;
         }
       } else {
-        // Update existing OIDC user profile
+        // Update existing OIDC user profile on every login
+        const previousProfile = user.oidcProfile;
+
+        // Debug: Log what we're getting from Passport
+        console.log('🔍 Passport Profile Debug:', {
+          'profile.id': profile.id,
+          'profile.displayName': profile.displayName,
+          'profile.emails': profile.emails,
+          'profile._json': profile._json,
+          'profile._raw': profile._raw ? 'present' : 'missing'
+        });
+
         user.oidcProfile = profile._json || profile;
         user.lastLoginAt = new Date();
+
+        // Log profile changes for audit trail
+        if (JSON.stringify(previousProfile) !== JSON.stringify(user.oidcProfile)) {
+          console.log(`🔄 OIDC profile updated for user ${user.email}:`, {
+            previous: previousProfile?.groups || [],
+            current: user.oidcProfile?.groups || [],
+            department: {
+              from: previousProfile?.department,
+              to: user.oidcProfile?.department
+            }
+          });
+        }
       }
 
       await userRepository.save(user);

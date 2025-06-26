@@ -10,6 +10,20 @@ declare module 'passport-openidconnect' {
     clientSecret: string;
     callbackURL: string;
     scope: string;
+    // Security and OIDC extension options
+    nonce?: boolean | string;
+    acrValues?: string;
+    passReqToCallback?: boolean;
+    prompt?: string;
+    display?: string;
+    maxAge?: number;
+    loginHint?: string;
+    idTokenHint?: string;
+    claims?: any;
+    responseMode?: string;
+    customHeaders?: any;
+    agent?: any;
+    proxy?: boolean;
   }
 
   type VerifyCallback = (
@@ -21,7 +35,17 @@ declare module 'passport-openidconnect' {
     done: (error: any, user?: any) => void
   ) => void;
 
+  type VerifyCallbackWithRequest = (
+    req: any,
+    issuer: string,
+    sub: string,
+    profile: any,
+    accessToken: string,
+    refreshToken: string,
+    done: (error: any, user?: any) => void
+  ) => void;
+
   export class Strategy extends Strategy {
-    constructor(options: OpenIDConnectStrategyOptions, verify: VerifyCallback);
+    constructor(options: OpenIDConnectStrategyOptions, verify: VerifyCallback | VerifyCallbackWithRequest);
   }
 }
