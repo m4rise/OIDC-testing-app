@@ -1,21 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import { User, UserRole } from '../entities/User';
 
-// Extend the Express Request interface to include user
-declare global {
-  namespace Express {
-    interface User {
-      id: string;
-      email: string;
-      firstName: string;
-      lastName: string;
-      role: UserRole;
-      isActive: boolean;
-      hasPermission: (permission: string) => boolean;
-    }
-  }
-}
-
 // Middleware to ensure user is authenticated
 export const requireAuth = (req: Request, res: Response, next: NextFunction): void => {
   if (req.isAuthenticated() && req.user) {

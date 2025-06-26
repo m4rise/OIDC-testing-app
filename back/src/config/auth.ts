@@ -4,20 +4,13 @@ import crypto from 'crypto';
 import { AppDataSource } from '../data-source';
 import { User, UserRole } from '../entities/User';
 import { configureMockOIDC } from './mock-auth';
+import { TokenInfo } from '../middleware/security';
 
 // PKCE and nonce generation utilities
 export const generatePKCE = () => {
   const codeVerifier = crypto.randomBytes(32).toString('base64url');
   const codeChallenge = crypto.createHash('sha256').update(codeVerifier).digest('base64url');
   return { codeVerifier, codeChallenge };
-};
-
-export const generateNonce = () => {
-  return crypto.randomBytes(16).toString('base64url');
-};
-
-export const generateState = () => {
-  return crypto.randomBytes(16).toString('base64url');
 };
 
 // Configure OIDC Strategy
@@ -63,6 +56,39 @@ export const configureOIDC = () => {
 
       // Extract subject from profile
       const sub = profile.id || profile._json?.sub || profile.sub;
+
+      // Store token information in session for token-aware session management
+      // Note: passport-openidconnect may not expose actual tokens directly
+      // This would need to be enhanced based on your specific OIDC provider's implementation
+      console.log('⚠️  Real OIDC token extraction needs implementation');
+      console.log('   passport-openidconnect may not expose tokens in this callback');
+      console.log('   You may need to use a different strategy or modify the token exchange');
+
+      // For now, create placeholder token info - this should be replaced with real token extraction
+      const tokenInfo: TokenInfo = {
+        accessToken: 'real_oidc_access_token_placeholder',
+        idToken: 'real_oidc_id_token_placeholder',
+        refreshToken: 'real_oidc_refresh_token_placeholder',
+        expiresAt: Date.now() + (3600 * 1000), // 1 hour
+        tokenExpiry: Date.now() + (3600 * 1000), // ID token expiry (1 hour)
+        refreshExpiry: Date.now() + (30 * 24 * 60 * 60 * 1000), // 30 days
+        lastRefresh: Date.now()
+      };
+
+      // TODO: Extract real tokens from OIDC provider response
+      // This depends on your specific OIDC provider and how passport-openidconnect exposes tokens
+
+      // Store token info in session
+      (req.session as any).tokenInfo = tokenInfo;
+
+      console.log('🔑 Real OIDC token placeholders stored (needs real implementation):', {
+        hasAccessToken: !!tokenInfo.accessToken,
+        hasIdToken: !!tokenInfo.idToken,
+        hasRefreshToken: !!tokenInfo.refreshToken,
+        tokenExpiresAt: new Date(tokenInfo.tokenExpiry!).toISOString(),
+        refreshExpiresAt: new Date(tokenInfo.refreshExpiry!).toISOString(),
+        issuer: issuer
+      });
 
       // Try to find existing user by OIDC subject
       let user = await userRepository.findOne({

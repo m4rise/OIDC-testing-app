@@ -2,6 +2,7 @@ import passport from 'passport';
 import { Strategy as LocalStrategy } from 'passport-local';
 import { AppDataSource } from '../data-source';
 import { User, UserRole } from '../entities/User';
+import { TokenInfo } from '../middleware/security';
 
 export interface MockUser {
   id: string;
@@ -123,6 +124,31 @@ export const configureMockOIDC = () => {
       }
 
       await userRepository.save(user);
+
+      // Store token information in session for token-aware session management
+      const issuedAt = Math.floor(Date.now() / 1000);
+      const tokenInfo: TokenInfo = {
+        accessToken: `mock_access_token_${issuedAt}`,
+        idToken: `mock_id_token_${issuedAt}`,
+        refreshToken: `mock_refresh_token_${issuedAt}`,
+        expiresAt: Date.now() + (3600 * 1000), // 1 hour
+        tokenExpiry: Date.now() + (3600 * 1000), // ID token expiry (1 hour)
+        refreshExpiry: Date.now() + (7 * 24 * 60 * 60 * 1000), // 7 days
+        lastRefresh: Date.now()
+      };
+
+      // Store token info in session
+      (req.session as any).tokenInfo = tokenInfo;
+
+      console.log('🎭 Mock auth token info stored:', {
+        hasAccessToken: !!tokenInfo.accessToken,
+        hasIdToken: !!tokenInfo.idToken,
+        hasRefreshToken: !!tokenInfo.refreshToken,
+        tokenExpiresAt: new Date(tokenInfo.tokenExpiry!).toISOString(),
+        refreshExpiresAt: new Date(tokenInfo.refreshExpiry!).toISOString(),
+        userEmail: user.email
+      });
+
       console.log('🎭 Mock user authenticated:', {
         id: user.id,
         email: user.email,

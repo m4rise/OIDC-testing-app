@@ -1,3 +1,4 @@
+/// <reference path="./types/express.d.ts" />
 import 'reflect-metadata';
 import express from 'express';
 import session from 'express-session';
@@ -114,6 +115,8 @@ app.use(cors({
       'http://front.localhost',
       'https://node.localhost', // Allow same-origin requests for mock OIDC
       'http://node.localhost',
+      'http://localhost:4200',   // Direct Angular dev server
+      'https://localhost:4200',  // Angular dev server with HTTPS
       process.env.FRONTEND_URL
     ].filter(Boolean);
 
@@ -121,6 +124,7 @@ app.use(cors({
       return callback(null, true);
     } else {
       console.log('CORS: Rejected origin:', origin);
+      console.log('CORS: Allowed origins:', allowedOrigins);
       return callback(new Error('Not allowed by CORS'));
     }
   },
@@ -128,7 +132,8 @@ app.use(cors({
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'x-requested-with', 'X-Requested-With'],
   exposedHeaders: ['set-cookie'],
-  optionsSuccessStatus: 200 // Some legacy browsers (IE11, various SmartTVs) choke on 204
+  optionsSuccessStatus: 200, // Some legacy browsers (IE11, various SmartTVs) choke on 204
+  preflightContinue: false   // Pass control to next handler after preflight
 }));
 
 // Body parsing middleware
