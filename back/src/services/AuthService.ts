@@ -101,96 +101,84 @@ export class AuthService {
     firstName: string;
     lastName: string;
     sub: string;
-    oidcIssuer?: string;
-    fullProfile?: Record<string, any>; // ← Add the full profile data
   }): Promise<User> {
-    const oidcIssuer = userInfo.oidcIssuer || 'mock-oidc';
+    // Try to find existing user by sub (stored in nni field) - primary identifier
+    let user = await this.userRepository.findByNni(userInfo.sub);
 
-    // First try to find existing user by OIDC subject (primary identifier)
-    let user = await this.userRepository.findByOIDC(userInfo.sub, oidcIssuer);
-
-    if (!user) {
-      // Fallback: try to find by email if user doesn't exist with OIDC subject
-      const existingUser = await this.userRepository.findByEmail(userInfo.email);
-      if (existingUser) {
-        // Update existing user with OIDC information
-        await this.userRepository.update(existingUser.id, {
-          oidcSubject: userInfo.sub,
-          oidcIssuer: oidcIssuer,
-          oidcProfile: userInfo.fullProfile, // ← Store the profile
-          lastLoginAt: new Date()
-        });
-        // Refetch the updated user
-        user = await this.userRepository.findById(existingUser.id) || existingUser;
-      } else {
-        // Create new user with default role based on email
-        const defaultRole = this.getDefaultRoleForEmail(userInfo.email);
-        user = await this.userRepository.create({
-          email: userInfo.email,
-          firstName: userInfo.firstName,
-          lastName: userInfo.lastName,
-          role: defaultRole,
-          oidcSubject: userInfo.sub,
-          oidcIssuer: oidcIssuer,
-          oidcProfile: userInfo.fullProfile, // ← Store the profile
-          isActive: true,
-          lastLoginAt: new Date(),
-        });
-
-        console.log(`✅ Created new user from OIDC: ${user.email} with role: ${user.role}`);
-      }
-    } else {
-      // Update existing OIDC user's profile and last login
+    if (user) {
+      // Update existing user's last login and email (in case it changed)
+      // Also update role in case it should change based on email
+      const expectedRole = this.getDefaultRoleForEmail(userInfo.email);
       await this.userRepository.update(user.id, {
-        oidcProfile: userInfo.fullProfile || user.oidcProfile, // ← Update profile if provided
+        email: userInfo.email, // Update email in case it changed
+        role: expectedRole, // Update role in case it should change
         lastLoginAt: new Date()
       });
+      // Refetch the updated user
       user = await this.userRepository.findById(user.id) || user;
+    } else {
+      // Create new user with sub as nni and default role based on email
+      const defaultRole = this.getDefaultRoleForEmail(userInfo.email);
+      user = await this.userRepository.create({
+        nni: userInfo.sub, // Store OIDC sub as the stable identifier
+        email: userInfo.email,
+        firstName: userInfo.firstName,
+        lastName: userInfo.lastName,
+        role: defaultRole,
+        isActive: true,
+        lastLoginAt: new Date(),
+      });
+
+      console.log(`✅ Created new user from OIDC: ${user.email} (nni: ${user.nni}) with role: ${user.role}`);
     }
 
     return user;
   }
 
-  private getDefaultRoleForEmail(email: string): UserRole {
-    // Define admin emails for mock development
+  /**
+   * Get default role for a user based on their email
+   *
+   * SECURITY NOTE: This method only assigns elevated roles (ADMIN/MODERATOR) in development mode.
+   * In production, ALL users are created with USER role by default to prevent privilege escalation.
+   *
+   * Production workflow:
+   * 1. User signs up via OIDC → Gets USER role
+   * 2. Admin manually promotes user to ADMIN/MODERATOR via admin interface
+   *
+   * @param email - User's email address
+   * @returns UserRole - Always USER in production, email-based roles in development
+   */
+  public getDefaultRoleForEmail(email: string): UserRole {
+    // SECURITY: Only assign special roles based on email in development
+    // In production, all users get USER role by default and must be promoted by admin
+    const isDevelopment = process.env.NODE_ENV === 'development';
+    const isLocalhost = process.env.FRONTEND_URL?.includes('localhost') ||
+                       process.env.BACKEND_URL?.includes('localhost');
+
+    if (!isDevelopment || !isLocalhost) {
+      console.warn(`🔒 Production/Remote mode: User ${email} created with default USER role. Admin privileges must be granted manually.`);
+      return UserRole.USER;
+    }
+
+    // Development-only: Assign roles based on well-known test emails
     const adminEmails = ['admin@example.com'];
     const moderatorEmails = ['manager@example.com'];
 
     if (adminEmails.includes(email.toLowerCase())) {
+      console.log(`🔧 Development mode: Assigning ADMIN role to ${email}`);
       return UserRole.ADMIN;
     }
     if (moderatorEmails.includes(email.toLowerCase())) {
+      console.log(`🔧 Development mode: Assigning MODERATOR role to ${email}`);
       return UserRole.MODERATOR;
     }
+
+    console.log(`🔧 Development mode: Assigning USER role to ${email}`);
     return UserRole.USER; // Default role
   }
 
   /**
    * Refresh user profile from OIDC provider
-   * Call this when you suspect user permissions have changed
-   */
-  async refreshOIDCProfile(userId: string): Promise<User | null> {
-    const user = await this.userRepository.findById(userId);
-    if (!user || !user.oidcSubject || !user.oidcIssuer) {
-      return null;
-    }
-
-    try {
-      // For production OIDC providers, you would call their /userinfo endpoint
-      const userInfoUrl = `${user.oidcIssuer}/userinfo`;
-
-      // Note: This requires an access token - you'd need to store refresh tokens
-      // or implement OAuth2 client credentials flow
-      console.log(`🔄 Would refresh profile for ${user.email} from ${userInfoUrl}`);
-
-      // For now, return user as-is since this requires additional OAuth2 setup
-      return user;
-    } catch (error) {
-      console.error('Failed to refresh OIDC profile:', error);
-      return user;
-    }
-  }
-
   /**
    * Check if user profile needs refresh based on age
    */
@@ -199,33 +187,5 @@ export class AuthService {
 
     const ageHours = (Date.now() - user.lastLoginAt.getTime()) / (1000 * 60 * 60);
     return ageHours > maxAgeHours;
-  }
-
-  /**
-   * Extract permissions from OIDC profile
-   */
-  getOIDCPermissions(user: User): string[] {
-    const profile = user.oidcProfile;
-    if (!profile) return [];
-
-    // Extract permissions from various OIDC claims
-    const permissions: string[] = [];
-
-    // From groups claim
-    if (profile.groups && Array.isArray(profile.groups)) {
-      permissions.push(...profile.groups);
-    }
-
-    // From roles claim
-    if (profile.roles && Array.isArray(profile.roles)) {
-      permissions.push(...profile.roles);
-    }
-
-    // From custom claims
-    if (profile.permissions && Array.isArray(profile.permissions)) {
-      permissions.push(...profile.permissions);
-    }
-
-    return [...new Set(permissions)]; // Remove duplicates
   }
 }

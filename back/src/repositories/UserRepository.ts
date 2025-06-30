@@ -17,10 +17,8 @@ export class UserRepository {
     return await this.repository.findOne({ where: { email } });
   }
 
-  async findByOIDC(oidcSubject: string, oidcIssuer: string): Promise<User | null> {
-    return await this.repository.findOne({
-      where: { oidcSubject, oidcIssuer }
-    });
+  async findByNni(nni: string): Promise<User | null> {
+    return await this.repository.findOne({ where: { nni } });
   }
 
   async findAll(options?: {

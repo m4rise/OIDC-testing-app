@@ -256,8 +256,11 @@ export class AuthController {
         isAuthenticated: req.isAuthenticated(),
         user: req.user ? {
           id: (req.user as any).id,
+          nni: (req.user as any).nni,
           email: (req.user as any).email,
-          oidcIssuer: (req.user as any).oidcIssuer
+          firstName: (req.user as any).firstName,
+          lastName: (req.user as any).lastName,
+          role: (req.user as any).role
         } : null,
         sessionKeys: Object.keys(req.session),
         tokenInfo: (req.session as any).tokenInfo || null,

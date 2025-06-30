@@ -4,6 +4,7 @@ import { BaseAuthStrategy, AuthParams } from './BaseAuthStrategy';
 import { UserRepository } from '../../repositories/UserRepository';
 import { User, UserRole } from '../../entities/User';
 import { UrlHelper } from '../../utils/urlHelper';
+import { AuthService } from '../../services/AuthService';
 
 export class OpenIDConnectStrategy extends BaseAuthStrategy {
   private openidClient: any;
@@ -321,29 +322,36 @@ export class OpenIDConnectStrategy extends BaseAuthStrategy {
     const firstName = claims.given_name || nameParts[0] || 'Unknown';
     const lastName = claims.family_name || nameParts.slice(1).join(' ') || 'User';
 
-    // Try to find existing user by email
-    let user = await userRepository.findByEmail(email);
+    // Try to find existing user by sub (stored in nni field)
+    let user = await userRepository.findByNni(claims.sub);
 
     if (user) {
-      // Update existing user with latest OIDC data
+      // Update existing user with latest OIDC data and role
+      const authService = new AuthService();
+      user.email = email; // Update email in case it changed
       user.firstName = firstName;
       user.lastName = lastName;
+      user.role = authService.getDefaultRoleForEmail(email); // Update role based on email
       user.isActive = true;
       user.lastLoginAt = new Date();
 
       await userRepository.update(user.id, {
+        email: user.email,
         firstName: user.firstName,
         lastName: user.lastName,
+        role: user.role,
         isActive: user.isActive,
         lastLoginAt: user.lastLoginAt
       });
     } else {
-      // Create new user from OIDC data
+      // Create new user from OIDC data - use AuthService for proper role assignment
+      const authService = new AuthService();
       const userData = {
+        nni: claims.sub, // Store OIDC sub as the stable identifier
         email,
         firstName,
         lastName,
-        role: UserRole.USER, // Default role, can be changed by admin
+        role: authService.getDefaultRoleForEmail(email), // Use proper role assignment
         isActive: true
       };
 

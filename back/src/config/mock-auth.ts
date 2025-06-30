@@ -32,7 +32,7 @@ export const mockUsers: MockUser[] = [
     email: 'manager@example.com',
     firstName: 'Manager',
     lastName: 'User',
-    role: UserRole.USER,
+    role: UserRole.MODERATOR, // Fixed: should be MODERATOR, not USER
     sub: 'mock-manager-789'
   }
 ];
