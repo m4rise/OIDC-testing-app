@@ -7,6 +7,7 @@ import { BaseAuthStrategy, AuthParams } from './BaseAuthStrategy';
 export class OpenIDConnectStrategy extends BaseAuthStrategy {
   private openidClient: any;
   private config: any;
+  private configData: any;
   private isInitialized: boolean = false;
 
   constructor() {
@@ -84,17 +85,55 @@ export class OpenIDConnectStrategy extends BaseAuthStrategy {
       // Get current URL for token exchange
       const currentUrl = new URL(req.originalUrl, `${req.protocol}://${req.get('host')}`);
 
-      // Exchange authorization code for tokens
-      const tokens = await authorizationCodeGrant(
-        this.config,
-        currentUrl,
-        {
-          pkceCodeVerifier: oidcParams.codeVerifier,
-          expectedState: oidcParams.state,
-        }
-      );
+      // Exchange authorization code for tokens with explicit redirect_uri
+      console.log('🔧 Config:', this.config);
+      console.log('🔧 Using manual config data for token exchange');
+      const tokenEndpointUrl = new URL(this.configData.token_endpoint);
+      const callbackURL = this.getCallbackURL();
+
+      console.log('🔧 Token endpoint:', tokenEndpointUrl.href);
+      console.log('🔧 Callback URL:', callbackURL);
+
+      // Create the token request parameters
+      const params = new URLSearchParams({
+        grant_type: 'authorization_code',
+        code: currentUrl.searchParams.get('code')!,
+        redirect_uri: callbackURL,
+        client_id: this.configData.client_id,
+        code_verifier: oidcParams.codeVerifier
+      });
+
+      // Make the token request directly
+      const tokenResponse = await fetch(tokenEndpointUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'Authorization': `Basic ${Buffer.from(`${this.configData.client_id}:${this.configData.client_secret}`).toString('base64')}`
+        },
+        body: params
+      });
+
+      if (!tokenResponse.ok) {
+        const errorData = await tokenResponse.text();
+        throw new Error(`Token exchange failed: ${tokenResponse.status} ${errorData}`);
+      }
+
+      const tokenData = await tokenResponse.json();
+
+      // Parse the ID token to get claims
+      const idTokenParts = tokenData.id_token.split('.');
+      const tokenClaims = JSON.parse(Buffer.from(idTokenParts[1], 'base64url').toString());
 
       console.log('✅ Tokens received successfully');
+
+      // Create a token-like object for compatibility
+      const tokens = {
+        access_token: tokenData.access_token,
+        refresh_token: tokenData.refresh_token,
+        id_token: tokenData.id_token,
+        expires_in: tokenData.expires_in,
+        claims: () => tokenClaims
+      };
 
       // Extract user info from ID token claims
       const claims = tokens.claims();
@@ -223,7 +262,20 @@ export class OpenIDConnectStrategy extends BaseAuthStrategy {
         this.config = await discovery(new URL(serverUrl), clientId, clientSecret);
       }
 
+      // Manually store the configuration parameters since openid-client v6
+      // uses a different structure
+      this.configData = {
+        issuer: serverUrl,
+        client_id: clientId,
+        client_secret: clientSecret,
+        token_endpoint: `${serverUrl}/token`,
+        authorization_endpoint: `${serverUrl}/auth`,
+        userinfo_endpoint: `${serverUrl}/userinfo`,
+        jwks_uri: `${serverUrl}/.well-known/jwks.json`
+      };
+
       console.log('✅ OIDC Discovery completed successfully');
+      console.log('🔧 Manual config data:', this.configData);
       console.log(`📍 Server URL: ${serverUrl}`);
       console.log(`📍 Client ID: ${clientId}`);
       console.log(`📍 Callback URL: ${this.getCallbackURL()}`);

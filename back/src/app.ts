@@ -117,6 +117,7 @@ app.use(cors({
       'http://front.localhost',
       'https://node.localhost', // Allow same-origin requests for mock OIDC
       'http://node.localhost',
+      'http://localhost:5000',   // Internal mock OIDC form submissions
       'http://localhost:4200',   // Direct Angular dev server
       'https://localhost:4200',  // Angular dev server with HTTPS
       process.env.FRONTEND_URL
