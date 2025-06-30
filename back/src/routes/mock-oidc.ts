@@ -5,7 +5,7 @@ const router: Router = express.Router();
 const mockOidcController = new MockOidcController();
 
 // OIDC Discovery endpoint
-router.get('/.well-known/openid_configuration', mockOidcController.discovery);
+router.get('/.well-known/openid-configuration', mockOidcController.discovery);
 
 // JWKS endpoint for JWT verification
 router.get('/.well-known/jwks.json', mockOidcController.jwks);

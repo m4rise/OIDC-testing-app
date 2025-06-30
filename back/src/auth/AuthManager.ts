@@ -1,7 +1,6 @@
 import { Request, Response } from 'express';
 import { AuthStrategy } from './strategies/BaseAuthStrategy';
-import { MockOIDCStrategy } from './strategies/MockOIDCStrategy';
-import { RealOIDCStrategy } from './strategies/RealOIDCStrategy';
+import { OpenIDConnectStrategy } from './strategies/OpenIDConnectStrategy';
 
 export class AuthManager {
   private strategy: AuthStrategy;
@@ -11,15 +10,9 @@ export class AuthManager {
   }
 
   private createStrategy(): AuthStrategy {
-    const useMockOIDC = process.env.NODE_ENV === 'development' && process.env.USE_MOCK_OIDC === 'true';
-
-    if (useMockOIDC) {
-      console.log('🎭 Using Mock OIDC Strategy');
-      return new MockOIDCStrategy();
-    } else {
-      console.log('🔐 Using Real OIDC Strategy');
-      return new RealOIDCStrategy();
-    }
+    // Always use OpenIDConnectStrategy - it handles both mock and real OIDC based on environment
+    console.log('🔐 Using OpenID Connect Strategy');
+    return new OpenIDConnectStrategy();
   }
 
   async initiateLogin(req: Request, res: Response, next: Function): Promise<void> {

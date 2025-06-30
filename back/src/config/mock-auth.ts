@@ -1,8 +1,4 @@
-import passport from 'passport';
-import { Strategy as LocalStrategy } from 'passport-local';
-import { AppDataSource } from '../data-source';
-import { User, UserRole } from '../entities/User';
-import { TokenInfo } from '../middleware/security';
+import { UserRole } from '../entities/User';
 
 export interface MockUser {
   id: string;
@@ -14,7 +10,7 @@ export interface MockUser {
 }
 
 // Mock users for development (using UUID format for compatibility with database)
-const mockUsers: MockUser[] = [
+export const mockUsers: MockUser[] = [
   {
     id: '550e8400-e29b-41d4-a716-446655440001',
     email: 'admin@example.com',
@@ -42,157 +38,9 @@ const mockUsers: MockUser[] = [
 ];
 
 export const configureMockOIDC = () => {
-  console.log('🎭 Configuring Mock OIDC strategy for development');
-
-  // Mock OIDC strategy using a custom approach
-  passport.use('mock-oidc', new LocalStrategy({
-    usernameField: 'email',
-    passwordField: 'mockAuth', // We'll use this to bypass password checking
-    passReqToCallback: true
-  }, async (req: any, email: string, mockAuth: string, done: Function) => {
-    try {
-      const userRepository = AppDataSource.getRepository(User);
-
-      // Get userInfo from request if available (from callback), otherwise find by email
-      const userInfo = req.body?.userInfo;
-      let mockUser;
-
-      if (userInfo) {
-        // Use the userInfo passed from the callback (contains the selected user's role)
-        mockUser = {
-          email: userInfo.email,
-          firstName: userInfo.given_name,
-          lastName: userInfo.family_name,
-          sub: userInfo.sub,
-          role: userInfo.role
-        };
-      } else {
-        // Fallback: find mock user by email
-        mockUser = mockUsers.find(u => u.email === email);
-      }
-
-      if (!mockUser) {
-        return done(null, false, { message: 'Mock user not found' });
-      }
-
-      // Try to find existing user in database
-      let user = await userRepository.findOne({
-        where: { email: mockUser.email }
-      });
-
-      console.log('🎭 Mock Auth - Processing user:', {
-        email: mockUser.email,
-        role: mockUser.role,
-        existingUser: !!user
-      });
-
-      if (!user) {
-        // Create new user from mock data
-        const mockIssuer = process.env.MOCK_OIDC_ISSUER || 'https://node.localhost/api/mock-oidc';
-        user = userRepository.create({
-          email: mockUser.email,
-          firstName: mockUser.firstName,
-          lastName: mockUser.lastName,
-          oidcSubject: mockUser.sub,
-          oidcIssuer: mockIssuer,
-          oidcProfile: {
-            sub: mockUser.sub,
-            email: mockUser.email,
-            given_name: mockUser.firstName,
-            family_name: mockUser.lastName,
-            name: `${mockUser.firstName} ${mockUser.lastName}`,
-            mock: true
-          },
-          role: mockUser.role,
-          isActive: true,
-        });
-      } else {
-        // Update existing user
-        const mockIssuer = process.env.MOCK_OIDC_ISSUER || 'https://node.localhost/api/mock-oidc';
-        user.oidcSubject = mockUser.sub;
-        user.oidcIssuer = mockIssuer;
-        user.oidcProfile = {
-          sub: mockUser.sub,
-          email: mockUser.email,
-          given_name: mockUser.firstName,
-          family_name: mockUser.lastName,
-          name: `${mockUser.firstName} ${mockUser.lastName}`,
-          mock: true
-        };
-        user.role = mockUser.role;
-        user.lastLoginAt = new Date();
-      }
-
-      await userRepository.save(user);
-
-      // Store token information in session for token-aware session management
-      const issuedAt = Math.floor(Date.now() / 1000);
-      const tokenInfo: TokenInfo = {
-        accessToken: `mock_access_token_${issuedAt}`,
-        idToken: `mock_id_token_${issuedAt}`,
-        refreshToken: `mock_refresh_token_${issuedAt}`,
-        expiresAt: Date.now() + (3600 * 1000), // 1 hour
-        tokenExpiry: Date.now() + (3600 * 1000), // ID token expiry (1 hour)
-        refreshExpiry: Date.now() + (7 * 24 * 60 * 60 * 1000), // 7 days
-        lastRefresh: Date.now()
-      };
-
-      // Store token info in session
-      (req.session as any).tokenInfo = tokenInfo;
-
-      console.log('🎭 Mock auth token info stored:', {
-        hasAccessToken: !!tokenInfo.accessToken,
-        hasIdToken: !!tokenInfo.idToken,
-        hasRefreshToken: !!tokenInfo.refreshToken,
-        tokenExpiresAt: new Date(tokenInfo.tokenExpiry!).toISOString(),
-        refreshExpiresAt: new Date(tokenInfo.refreshExpiry!).toISOString(),
-        userEmail: user.email
-      });
-
-      console.log('🎭 Mock user authenticated:', {
-        id: user.id,
-        email: user.email,
-        role: user.role,
-        isActive: user.isActive
-      });
-      return done(null, user);
-    } catch (error) {
-      console.error('Mock OIDC authentication error:', error);
-      return done(error, null);
-    }
-  }));
-
-  // Serialize user for session
-  passport.serializeUser((user: any, done) => {
-    done(null, user.id);
-  });
-
-  // Deserialize user from session
-  passport.deserializeUser(async (id: string, done) => {
-    try {
-      // Check if this is a mock user ID first (for development)
-      const mockUser = mockUsers.find(u => u.id === id);
-      if (mockUser) {
-        // Return mock user with database-compatible structure
-        const userForSession = {
-          ...mockUser,
-          isActive: true,
-          createdAt: new Date(),
-          updatedAt: new Date(),
-          lastLoginAt: new Date(),
-          hasPermission: () => true // Mock permission check
-        };
-        return done(null, userForSession);
-      }
-
-      // Otherwise, look up real user in database
-      const userRepository = AppDataSource.getRepository(User);
-      const user = await userRepository.findOne({ where: { id } });
-      done(null, user);
-    } catch (error) {
-      done(error, null);
-    }
-  });
+  console.log('🎭 Configuring Mock OIDC endpoints for development');
+  console.log('🎭 Mock OIDC endpoints will be available at /api/mock-oidc/*');
+  console.log('🎭 The OpenIDConnect strategy will use openid-client to connect to these endpoints');
+  // The actual mock OIDC endpoints are set up by MockOidcController
+  // No separate passport strategy needed - OpenIDConnectStrategy handles everything
 };
-
-export { mockUsers };

@@ -1,14 +1,5 @@
 import { Request, Response } from 'express';
 import { AuthService } from '../../services/AuthService';
-import {
-  validateState,
-  validatePKCE,
-  validateRedirectUri,
-  validateAuthorizationCode,
-  validateNonce,
-  validateIssuer,
-  decodeJWTPayload
-} from '../../utils/security-validator';
 
 export interface AuthParams {
   codeVerifier?: string;
@@ -48,35 +39,6 @@ export abstract class BaseAuthStrategy implements AuthStrategy {
     params.forEach(param => {
       delete (req.session as any)?.[param];
     });
-  }
-
-  // Security validation methods
-  protected validateAuthorizationCode(code: string): void {
-    return validateAuthorizationCode(code);
-  }
-
-  protected validateState(receivedState: string, sessionState: string): void {
-    return validateState(receivedState, sessionState);
-  }
-
-  protected validateRedirectUri(currentUri: string, expectedUri: string): void {
-    return validateRedirectUri(currentUri, expectedUri);
-  }
-
-  protected validatePKCE(codeVerifier: string, codeChallenge: string): void {
-    return validatePKCE(codeVerifier, codeChallenge);
-  }
-
-  protected validateNonce(receivedNonce: string, sessionNonce: string): void {
-    return validateNonce(receivedNonce, sessionNonce);
-  }
-
-  protected validateIssuer(receivedIssuer: string, expectedIssuer: string): void {
-    return validateIssuer(receivedIssuer, expectedIssuer);
-  }
-
-  protected decodeJWTPayload(token: string): any {
-    return decodeJWTPayload(token);
   }
 
   // User management methods

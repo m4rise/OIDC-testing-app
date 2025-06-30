@@ -1,6 +1,6 @@
 import { Request, Response } from 'express';
 import crypto from 'crypto';
-import { mockUsers } from '../config/mock-auth';
+import { mockUsers, MockUser } from '../config/mock-auth';
 
 export class MockOidcController {
   private readonly MOCK_ISSUER = process.env.MOCK_OIDC_ISSUER || 'https://node.localhost/api/mock-oidc';
@@ -18,7 +18,7 @@ export class MockOidcController {
     code: string;
     client_id: string;
     redirect_uri: string;
-    user: any;
+    user: MockUser;
     scope: string;
     nonce?: string;
     code_challenge?: string;
@@ -29,7 +29,7 @@ export class MockOidcController {
 
   private refreshTokens = new Map<string, {
     token: string;
-    user: any;
+    user: MockUser;
     scope: string;
     expires_at: number;
     used: boolean;
@@ -66,7 +66,7 @@ export class MockOidcController {
   };
 
   // Generate a proper JWT token
-  private generateJWT = (payload: any, expiresIn: number = 3600): string => {
+  private generateJWT = (payload: Record<string, any>, expiresIn: number = 3600): string => {
     const header = {
       alg: 'RS256',
       typ: 'JWT',
@@ -303,7 +303,7 @@ export class MockOidcController {
                       <label for="user">🧑‍💼 Select Mock User for Authentication:</label>
                       <select name="email" id="user" required>
                           <option value="">-- Choose a user to authenticate --</option>
-                          ${mockUsers.map(user => `
+                          ${mockUsers.map((user: MockUser) => `
                               <option value="${user.email}">
                                   ${user.firstName} ${user.lastName} (${user.role}) - ${user.email}
                               </option>
@@ -315,7 +315,7 @@ export class MockOidcController {
               </form>
 
               <h3>📋 Available Mock Users</h3>
-              ${mockUsers.map(user => `
+              ${mockUsers.map((user: MockUser) => `
                   <div class="user-info">
                       <strong>${user.firstName} ${user.lastName}</strong><br>
                       Email: <span class="param">${user.email}</span><br>
@@ -354,7 +354,7 @@ export class MockOidcController {
       return;
     }
 
-    const mockUser = mockUsers.find(u => u.email === email);
+    const mockUser = mockUsers.find((u: MockUser) => u.email === email);
     if (!mockUser) {
       const errorUrl = new URL(redirect_uri);
       errorUrl.searchParams.set('error', 'access_denied');

@@ -54,7 +54,9 @@ AppDataSource.initialize()
 function setupApp() {
 
 // Configure OIDC
-configureOIDC();
+configureOIDC().catch((error: any) => {
+  console.error('❌ Failed to configure OIDC:', error);
+});
 
 // Middleware
 const isDevelopment = process.env.NODE_ENV === 'development';
