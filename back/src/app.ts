@@ -60,29 +60,40 @@ configureOIDC().catch((error: any) => {
 
 // Middleware
 const isDevelopment = process.env.NODE_ENV === 'development';
-const disableCSP = process.env.DISABLE_CSP === 'true';
 
-if (disableCSP && isDevelopment) {
-  console.log('⚠️  CSP disabled for development');
-  app.use(helmet({
-    contentSecurityPolicy: false,
-    crossOriginEmbedderPolicy: false,
-    // Enhanced security headers for development
-    xFrameOptions: { action: 'deny' },
-    xContentTypeOptions: true,
-    xXssProtection: true,
-    referrerPolicy: { policy: 'strict-origin-when-cross-origin' }
-  }));
-} else {
-  app.use(helmet({
-    contentSecurityPolicy: {
-      directives: {
-        defaultSrc: ["'self'"],
+// Build form-action CSP directive dynamically based on OIDC configuration
+function buildFormActionDirective(): string[] {
+  const formActions = ["'self'", "https://node.localhost", "https://front.localhost"];
+
+  // Add mock OIDC endpoint only in development when enabled
+  if (isDevelopment && process.env.USE_MOCK_OIDC === 'true') {
+    const mockOidcIssuer = process.env.MOCK_OIDC_ISSUER || 'https://node.localhost/api/mock-oidc';
+    if (!formActions.includes(mockOidcIssuer)) {
+      formActions.push(mockOidcIssuer);
+    }
+  }
+
+  // Add real OIDC issuer if configured (for production)
+  if (process.env.OIDC_ISSUER) {
+    const realOidcIssuer = process.env.OIDC_ISSUER;
+    if (!formActions.includes(realOidcIssuer)) {
+      formActions.push(realOidcIssuer);
+    }
+  }
+
+  return formActions;
+}
+
+// Always enable CSP for better security
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
         styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com", "https:"],
         fontSrc: ["'self'", "https://fonts.gstatic.com", "https:", "data:"],
         scriptSrc: ["'self'", "'unsafe-inline'"],
         imgSrc: ["'self'", "data:", "https:"],
-        formAction: ["'self'", "'unsafe-inline'"],
+        formAction: buildFormActionDirective(),
         connectSrc: ["'self'", "https://node.localhost", "https://front.localhost", "https:", "wss:"],
         frameSrc: ["'self'", "https:"],
         childSrc: ["'self'", "https:"],
@@ -100,7 +111,6 @@ if (disableCSP && isDevelopment) {
       preload: true
     }
   }));
-}
 
 // Basic middleware
 app.use(compression());
@@ -114,12 +124,7 @@ app.use(cors({
 
     const allowedOrigins = [
       'https://front.localhost',
-      'http://front.localhost',
       'https://node.localhost', // Allow same-origin requests for mock OIDC
-      'http://node.localhost',
-      'http://localhost:5000',   // Internal mock OIDC form submissions
-      'http://localhost:4200',   // Direct Angular dev server
-      'https://localhost:4200',  // Angular dev server with HTTPS
       process.env.FRONTEND_URL
     ].filter(Boolean);
 
@@ -181,36 +186,15 @@ app.use(passport.session());
 // Enhanced security middleware - only session security (headers handled by Helmet)
 app.use(sessionSecurity);
 
-// Debug middleware - log session info for troubleshooting
+// Debug middleware - simplified auth logging
 if (process.env.NODE_ENV === 'development') {
   app.use((req, res, next) => {
-    // Log all requests, not just auth-related ones, to see cookie behavior
-    console.log(`\n=== ${req.method} ${req.path} ===`);
-    console.log('Origin:', req.get('origin') || 'none');
-    console.log('Host:', req.get('host') || 'none');
-    console.log('Session ID:', req.sessionID);
-    console.log('User authenticated:', req.isAuthenticated());
-    console.log('User:', req.user ? `${req.user.email} (${req.user.role})` : 'none');
-    console.log('Cookie header:', req.get('cookie') || 'none');
-    console.log('Set-Cookie will be sent:', res.get('set-cookie') || 'none');
-
-    // Intercept response to log set-cookie headers
-    const originalSetHeader = res.setHeader;
-    res.setHeader = function(name, value) {
-      if (name.toLowerCase() === 'set-cookie') {
-        console.log('🍪 Setting cookie:', value);
-      }
-      return originalSetHeader.call(this, name, value);
-    };
-
-    // Intercept session saving
-    const originalSave = req.session.save;
-    req.session.save = function(callback) {
-      console.log('💾 Saving session:', req.sessionID);
-      return originalSave.call(this, callback);
-    };
-
-    console.log('================================\n');
+    // Only log auth-related requests to reduce noise
+    if (req.path.startsWith('/api/auth') || req.path.startsWith('/api/mock-oidc')) {
+      console.log(`\n=== ${req.method} ${req.path} ===`);
+      console.log('User authenticated:', req.isAuthenticated());
+      console.log('================================\n');
+    }
     next();
   });
 }
@@ -225,25 +209,6 @@ app.get('/health', (req, res) => {
   });
 });
 
-// Test endpoint for cookie debugging
-app.get('/api/test-session', (req, res) => {
-  console.log('\n=== TEST SESSION ENDPOINT ===');
-  console.log('Session ID:', req.sessionID);
-  console.log('Cookie header:', req.get('cookie') || 'none');
-  console.log('User agent:', req.get('user-agent'));
-  console.log('Origin:', req.get('origin') || 'none');
-
-  // Force session data
-  (req.session as any).testData = 'Browser cookie test at ' + new Date().toISOString();
-
-  res.json({
-    sessionId: req.sessionID,
-    testData: (req.session as any).testData,
-    cookieReceived: !!req.get('cookie'),
-    sessionData: req.session
-  });
-});
-
 // API routes
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
@@ -251,7 +216,6 @@ app.use('/api/users', userRoutes);
 // Mock OIDC routes (for development)
 if (process.env.NODE_ENV === 'development') {
   app.use('/api/mock-oidc', mockOidcRoutes);
-  console.log('🎭 Mock OIDC routes enabled at /api/mock-oidc');
 }
 
 // 404 handler

@@ -12,6 +12,8 @@ export interface SessionInfo {
     role: string;
     isActive: boolean;
     permissions: string[];
+    createdAt: string;
+    lastLoginAt?: string;
   };
   isAuthenticated: boolean;
 }
@@ -35,6 +37,8 @@ export class AuthService {
           role: '',
           isActive: false,
           permissions: [],
+          createdAt: new Date().toISOString(),
+          lastLoginAt: undefined,
         },
         isAuthenticated: false,
       };
@@ -61,6 +65,8 @@ export class AuthService {
         role: freshUser.role,
         isActive: freshUser.isActive,
         permissions,
+        createdAt: freshUser.createdAt?.toISOString() || new Date().toISOString(),
+        lastLoginAt: freshUser.lastLoginAt?.toISOString(),
       },
       isAuthenticated: true,
     };

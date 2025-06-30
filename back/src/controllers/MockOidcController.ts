@@ -38,7 +38,6 @@ export class MockOidcController {
   // Valid redirect URIs (in production, these would be registered with the client)
   private readonly VALID_REDIRECT_URIS = [
     'https://node.localhost/api/auth/callback',
-    'http://node.localhost/api/auth/callback',
     process.env.OIDC_CALLBACK_URL || 'https://node.localhost/api/auth/callback'
   ].filter((uri, index, array) => array.indexOf(uri) === index); // Remove duplicates
 

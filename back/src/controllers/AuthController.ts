@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import { AuthService } from '../services/AuthService';
 import { AuthManager } from '../auth/AuthManager';
 import { TokenInfo } from '../middleware/security';
+import { UrlHelper } from '../utils/urlHelper';
 
 export class AuthController {
   private authService: AuthService;
@@ -323,7 +324,8 @@ export class AuthController {
   // Helper method for refreshing mock OIDC tokens
   private async refreshMockTokens(req: Request, tokenInfo: TokenInfo): Promise<boolean> {
     try {
-      const tokenEndpoint = `http://localhost:5000/api/mock-oidc/token`;
+      // Use internal URL for server-to-server communication
+      const tokenEndpoint = UrlHelper.getApiEndpointUrl('token', 'internal');
 
       const response = await fetch(tokenEndpoint, {
         method: 'POST',

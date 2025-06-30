@@ -1,17 +1,37 @@
 import { Request, Response } from 'express';
-import passport from 'passport';
-import { AuthService } from '../../services/AuthService';
 import { TokenInfo } from '../../middleware/security';
 import { BaseAuthStrategy, AuthParams } from './BaseAuthStrategy';
+import { UserRepository } from '../../repositories/UserRepository';
+import { User, UserRole } from '../../entities/User';
+import { UrlHelper } from '../../utils/urlHelper';
 
 export class OpenIDConnectStrategy extends BaseAuthStrategy {
   private openidClient: any;
-  private config: any;
+  private config: any; // Internal config for discovery and token exchange
   private configData: any;
   private isInitialized: boolean = false;
 
   constructor() {
     super();
+  }
+
+  /**
+   * Get the appropriate base URL for the given context
+   * @param context - The communication context ('internal' for container-to-self, 'external' for browser-facing)
+   */
+  private getBaseUrl(context: 'internal' | 'external'): string {
+    return UrlHelper.getBaseUrl(context);
+  }
+
+  /**
+   * Get the appropriate OIDC issuer URL for the given context
+   */
+  private getOidcIssuerUrl(context: 'internal' | 'external'): string {
+    return UrlHelper.getOidcIssuerUrl(context);
+  }
+
+  private getCallbackURL(): string {
+    return UrlHelper.getCallbackUrl();
   }
 
   generateAuthParams(): AuthParams {
@@ -31,20 +51,22 @@ export class OpenIDConnectStrategy extends BaseAuthStrategy {
     }
 
     try {
-      const { randomPKCECodeVerifier, calculatePKCECodeChallenge, randomState, buildAuthorizationUrl } = this.openidClient;
+      const { randomPKCECodeVerifier, calculatePKCECodeChallenge, randomState, randomNonce, buildAuthorizationUrl } = this.openidClient;
 
       // Generate PKCE parameters
       const codeVerifier = randomPKCECodeVerifier();
       const codeChallenge = await calculatePKCECodeChallenge(codeVerifier);
       const state = randomState();
+      const nonce = randomNonce();
 
-      // Store PKCE parameters in session
+      // Store OIDC parameters in session for validation during callback
       (req.session as any).oidcParams = {
         codeVerifier,
-        state
+        state,
+        nonce
       };
 
-      // Build authorization URL
+      // Build authorization URL with enhanced security parameters
       const scope = 'openid profile email';
       const callbackURL = this.getCallbackURL();
 
@@ -53,13 +75,26 @@ export class OpenIDConnectStrategy extends BaseAuthStrategy {
         scope,
         code_challenge: codeChallenge,
         code_challenge_method: 'S256',
-        state
+        state,
+        nonce,
+        // Include ACR values if configured
+        ...(process.env.OIDC_ACR_VALUES && { acr_values: process.env.OIDC_ACR_VALUES })
       };
 
+      // Use openid-client's buildAuthorizationUrl method with the discovered config
       const authorizationUrl = buildAuthorizationUrl(this.config, parameters);
 
-      console.log('🔗 Redirecting to authorization URL:', authorizationUrl.href);
-      res.redirect(authorizationUrl.href);
+      // For browser redirects, we need to ensure the URL uses the external domain
+      // Replace the internal domain with the external domain if needed
+      const internalDomain = UrlHelper.getOidcIssuerUrl('internal');
+      const externalDomain = UrlHelper.getOidcIssuerUrl('external');
+
+      let finalAuthUrl = authorizationUrl.href;
+      if (finalAuthUrl.includes(internalDomain)) {
+        finalAuthUrl = finalAuthUrl.replace(internalDomain, externalDomain);
+      }
+
+      res.redirect(finalAuthUrl);
 
     } catch (error) {
       console.error('❌ Error initiating login:', error);
@@ -86,13 +121,8 @@ export class OpenIDConnectStrategy extends BaseAuthStrategy {
       const currentUrl = new URL(req.originalUrl, `${req.protocol}://${req.get('host')}`);
 
       // Exchange authorization code for tokens with explicit redirect_uri
-      console.log('🔧 Config:', this.config);
-      console.log('🔧 Using manual config data for token exchange');
       const tokenEndpointUrl = new URL(this.configData.token_endpoint);
       const callbackURL = this.getCallbackURL();
-
-      console.log('🔧 Token endpoint:', tokenEndpointUrl.href);
-      console.log('🔧 Callback URL:', callbackURL);
 
       // Create the token request parameters
       const params = new URLSearchParams({
@@ -124,7 +154,10 @@ export class OpenIDConnectStrategy extends BaseAuthStrategy {
       const idTokenParts = tokenData.id_token.split('.');
       const tokenClaims = JSON.parse(Buffer.from(idTokenParts[1], 'base64url').toString());
 
-      console.log('✅ Tokens received successfully');
+      // Validate nonce to prevent replay attacks
+      if (oidcParams.nonce && tokenClaims.nonce !== oidcParams.nonce) {
+        throw new Error('Invalid nonce parameter - potential replay attack detected');
+      }
 
       // Create a token-like object for compatibility
       const tokens = {
@@ -137,33 +170,36 @@ export class OpenIDConnectStrategy extends BaseAuthStrategy {
 
       // Extract user info from ID token claims
       const claims = tokens.claims();
-      const userInfo = {
-        sub: claims.sub,
-        email: claims.email,
-        name: claims.name,
-        preferred_username: claims.preferred_username
-      };
 
-      // Store user and tokens in session
-      (req.session as any).user = {
-        ...userInfo,
-        tokenInfo: {
-          accessToken: tokens.access_token,
-          refreshToken: tokens.refresh_token,
-          idToken: tokens.id_token,
-          expiresAt: Date.now() + (tokens.expires_in * 1000),
-          claims: claims
-        }
+      // Create or update user in database
+      const user = await this.createOrUpdateUser(claims);
+
+      // Store user in session (using passport's req.login)
+      await new Promise<void>((resolve, reject) => {
+        req.login(user, (err) => {
+          if (err) {
+            reject(err);
+          } else {
+            resolve();
+          }
+        });
+      });
+
+      // Also store token info in session for token refresh
+      (req.session as any).tokenInfo = {
+        accessToken: tokens.access_token,
+        refreshToken: tokens.refresh_token,
+        idToken: tokens.id_token,
+        expiresAt: Date.now() + (tokens.expires_in * 1000),
+        claims: claims
       };
 
       // Clean up OIDC parameters
       delete (req.session as any).oidcParams;
 
-      console.log('✅ User authenticated and stored in session:', userInfo.sub);
-
-      // Redirect to success URL
-      const successUrl = process.env.LOGIN_SUCCESS_REDIRECT_URL || '/auth/success';
-      res.redirect(successUrl);
+      // Redirect to frontend callback route for proper session refresh
+      const frontendUrl = UrlHelper.getFrontendUrl();
+      res.redirect(`${frontendUrl}/auth/callback`);
 
     } catch (error) {
       console.error('❌ Authentication callback error:', error);
@@ -187,19 +223,12 @@ export class OpenIDConnectStrategy extends BaseAuthStrategy {
     return tokenInfo;
   }
 
-  private getCallbackURL(): string {
-    // Always use the callback URL from environment
-    return process.env.OIDC_CALLBACK_URL || 'https://node.localhost/api/auth/callback';
-  }
-
   async initialize() {
     if (this.isInitialized) return;
 
     try {
       // Dynamic import for ESM modules
       this.openidClient = await import('openid-client');
-
-      console.log('✅ OpenID Client v6+ loaded successfully');
 
       await this.setupStrategy();
       this.isInitialized = true;
@@ -216,8 +245,6 @@ export class OpenIDConnectStrategy extends BaseAuthStrategy {
       throw new Error('Failed to import discovery from openid-client');
     }
 
-    console.log('✅ Successfully imported discovery from openid-client');
-
     const useMockOIDC = process.env.NODE_ENV === 'development' && process.env.USE_MOCK_OIDC === 'true';
 
     let serverUrl: string;
@@ -225,18 +252,13 @@ export class OpenIDConnectStrategy extends BaseAuthStrategy {
     let clientSecret: string;
 
     if (useMockOIDC) {
-      console.log('🔧 Using Mock OIDC configuration');
-
-      // For mock OIDC: use internal HTTP for discovery (container-to-container)
-      // but external HTTPS for redirects (browser-to-traefik)
-      serverUrl = 'http://localhost:5000/api/mock-oidc'; // Internal discovery
+      // For mock OIDC: use internal URL for discovery (container-to-self)
+      serverUrl = this.getOidcIssuerUrl('internal');
       clientId = process.env.OIDC_CLIENT_ID || 'mock-client';
       clientSecret = process.env.OIDC_CLIENT_SECRET || 'mock-secret';
     } else {
-      console.log('🔧 Using Real OIDC configuration');
-
       // Real OIDC configuration
-      serverUrl = process.env.OIDC_ISSUER!;
+      serverUrl = this.getOidcIssuerUrl('external');
       clientId = process.env.OIDC_CLIENT_ID!;
       clientSecret = process.env.OIDC_CLIENT_SECRET!;
 
@@ -252,8 +274,8 @@ export class OpenIDConnectStrategy extends BaseAuthStrategy {
       if (useMockOIDC) {
         // For mock OIDC, allow insecure HTTP requests during discovery
         const { allowInsecureRequests } = this.openidClient;
-        console.log('🔧 Configuring discovery with HTTP support for mock OIDC');
 
+        // Internal config for discovery and token exchange (use internal URL)
         this.config = await discovery(new URL(serverUrl), clientId, clientSecret, undefined, {
           execute: [allowInsecureRequests],
         });
@@ -264,25 +286,70 @@ export class OpenIDConnectStrategy extends BaseAuthStrategy {
 
       // Manually store the configuration parameters since openid-client v6
       // uses a different structure
+      // IMPORTANT: Use external URLs for ALL browser-accessible endpoints
+      const externalIssuerUrl = UrlHelper.getOidcIssuerUrl('external');
+      const internalIssuerUrl = UrlHelper.getOidcIssuerUrl('internal');
+
       this.configData = {
-        issuer: serverUrl,
+        issuer: externalIssuerUrl, // Browser-facing issuer
         client_id: clientId,
         client_secret: clientSecret,
-        token_endpoint: `${serverUrl}/token`,
-        authorization_endpoint: `${serverUrl}/auth`,
-        userinfo_endpoint: `${serverUrl}/userinfo`,
-        jwks_uri: `${serverUrl}/.well-known/jwks.json`
+        token_endpoint: `${internalIssuerUrl}/token`, // Internal for server-to-server
+        authorization_endpoint: `${externalIssuerUrl}/auth`, // External for browser redirects - CRITICAL!
+        userinfo_endpoint: `${internalIssuerUrl}/userinfo`, // Internal for server-to-server
+        jwks_uri: `${internalIssuerUrl}/.well-known/jwks.json` // Internal for server-to-server
       };
 
       console.log('✅ OIDC Discovery completed successfully');
-      console.log('🔧 Manual config data:', this.configData);
-      console.log(`📍 Server URL: ${serverUrl}`);
-      console.log(`📍 Client ID: ${clientId}`);
-      console.log(`📍 Callback URL: ${this.getCallbackURL()}`);
 
     } catch (error) {
       console.error('❌ Failed to configure OIDC strategy:', error);
       throw error;
     }
+  }
+
+  /**
+   * Create or update user from OIDC claims
+   */
+  private async createOrUpdateUser(claims: any): Promise<User> {
+    const userRepository = new UserRepository();
+
+    // Extract user info from claims
+    const email = claims.email;
+    const name = claims.name || claims.preferred_username || email;
+    const nameParts = name.split(' ');
+    const firstName = claims.given_name || nameParts[0] || 'Unknown';
+    const lastName = claims.family_name || nameParts.slice(1).join(' ') || 'User';
+
+    // Try to find existing user by email
+    let user = await userRepository.findByEmail(email);
+
+    if (user) {
+      // Update existing user with latest OIDC data
+      user.firstName = firstName;
+      user.lastName = lastName;
+      user.isActive = true;
+      user.lastLoginAt = new Date();
+
+      await userRepository.update(user.id, {
+        firstName: user.firstName,
+        lastName: user.lastName,
+        isActive: user.isActive,
+        lastLoginAt: user.lastLoginAt
+      });
+    } else {
+      // Create new user from OIDC data
+      const userData = {
+        email,
+        firstName,
+        lastName,
+        role: UserRole.USER, // Default role, can be changed by admin
+        isActive: true
+      };
+
+      user = await userRepository.create(userData);
+    }
+
+    return user;
   }
 }
