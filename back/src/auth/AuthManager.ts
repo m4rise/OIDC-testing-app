@@ -33,17 +33,9 @@ export class AuthManager {
       return await this.strategy.handleCallback(req, res, next);
     } catch (error) {
       console.error('🔒 Authentication callback error:', error);
-
-      // Determine error type and redirect appropriately
-      const errorParam = this.isSecurityError(error) ? 'security_error' : 'server_error';
-      res.redirect(`${process.env.FRONTEND_URL || 'https://front.localhost'}/login?error=${errorParam}`);
+      const failureUrl = process.env.LOGIN_FAILURE_REDIRECT_URL ||
+        `${process.env.FRONTEND_URL || 'https://front.localhost'}/login?error=auth_error`;
+      res.redirect(failureUrl);
     }
-  }
-
-  private isSecurityError(error: any): boolean {
-    // Check if error is security-related
-    const securityKeywords = ['security', 'validation', 'pkce', 'nonce', 'state', 'csrf'];
-    const errorMessage = error?.message?.toLowerCase() || '';
-    return securityKeywords.some(keyword => errorMessage.includes(keyword));
   }
 }

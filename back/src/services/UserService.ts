@@ -104,25 +104,7 @@ export class UserService {
     return await this.userRepository.delete(id);
   }
 
-  async deactivateUser(id: string): Promise<User> {
-    const user = await this.userRepository.deactivate(id);
-    if (!user) {
-      throw new Error('User not found');
-    }
-    return user;
-  }
 
-  async activateUser(id: string): Promise<User> {
-    const user = await this.userRepository.activate(id);
-    if (!user) {
-      throw new Error('User not found');
-    }
-    return user;
-  }
-
-  async updateUserRole(id: string, role: UserRole): Promise<User> {
-    return await this.updateUser(id, { role });
-  }
 
   async getUserStats(): Promise<{
     total: number;
@@ -131,9 +113,11 @@ export class UserService {
     inactive: number;
   }> {
     const total = await this.userRepository.count();
-    const adminCount = await this.userRepository.countByRole(UserRole.ADMIN);
-    const moderatorCount = await this.userRepository.countByRole(UserRole.MODERATOR);
-    const userCount = await this.userRepository.countByRole(UserRole.USER);
+
+    // Count by role using repository queries
+    const adminCount = await this.userRepository.findAll({ role: UserRole.ADMIN });
+    const moderatorCount = await this.userRepository.findAll({ role: UserRole.MODERATOR });
+    const userCount = await this.userRepository.findAll({ role: UserRole.USER });
 
     const [, activeCount] = await this.userRepository.findAll({ isActive: true });
     const [, inactiveCount] = await this.userRepository.findAll({ isActive: false });
@@ -141,9 +125,9 @@ export class UserService {
     return {
       total,
       byRole: {
-        [UserRole.ADMIN]: adminCount,
-        [UserRole.MODERATOR]: moderatorCount,
-        [UserRole.USER]: userCount,
+        [UserRole.ADMIN]: adminCount[1],
+        [UserRole.MODERATOR]: moderatorCount[1],
+        [UserRole.USER]: userCount[1],
       },
       active: activeCount,
       inactive: inactiveCount,

@@ -75,10 +75,6 @@ export class AuthService {
     };
   }
 
-  async updateLastLogin(userId: string): Promise<void> {
-    await this.userRepository.updateLastLogin(userId);
-  }
-
   private getUserPermissions(role: string): string[] {
     const rolePermissions = {
       admin: ['read', 'write', 'delete', 'admin'],
@@ -89,15 +85,7 @@ export class AuthService {
     return rolePermissions[role as keyof typeof rolePermissions] || [];
   }
 
-  generateOIDCState(): string {
-    return Math.random().toString(36).substring(2, 15) +
-           Math.random().toString(36).substring(2, 15);
-  }
 
-  generateOIDCNonce(): string {
-    return Math.random().toString(36).substring(2, 15) +
-           Math.random().toString(36).substring(2, 15);
-  }
 
   /**
    * Get default role for a user based on their email

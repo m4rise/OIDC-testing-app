@@ -6,9 +6,6 @@ import { OpenIDConnectStrategy } from '../auth/strategies/OpenIDConnectStrategy'
 
 // Configure OIDC Strategy
 export const configureOIDC = async () => {
-  const clientID = process.env.OIDC_CLIENT_ID;
-  const clientSecret = process.env.OIDC_CLIENT_SECRET;
-  const issuer = process.env.OIDC_ISSUER;
   const useMockOIDC = process.env.NODE_ENV === 'development' && process.env.USE_MOCK_OIDC === 'true';
 
   // Use mock OIDC in development if enabled
@@ -18,7 +15,7 @@ export const configureOIDC = async () => {
     configureMockOIDC();
   }
 
-  if (!useMockOIDC && (!clientID || !clientSecret || !issuer)) {
+  if (!useMockOIDC && (!process.env.OIDC_CLIENT_ID || !process.env.OIDC_CLIENT_SECRET || !process.env.OIDC_ISSUER)) {
     console.warn('OIDC configuration is incomplete. Skipping OIDC strategy configuration.');
     console.warn('To enable OIDC authentication, set OIDC_CLIENT_ID, OIDC_CLIENT_SECRET, and OIDC_ISSUER environment variables.');
     console.warn('To use Mock OIDC for development, set USE_MOCK_OIDC=true in your .env file.');
@@ -27,7 +24,7 @@ export const configureOIDC = async () => {
 
   const issuerToUse = useMockOIDC
     ? 'https://node.localhost/api/mock-oidc'
-    : issuer;
+    : process.env.OIDC_ISSUER;
 
   console.log('✅ Configuring OIDC strategy with issuer:', issuerToUse);
 

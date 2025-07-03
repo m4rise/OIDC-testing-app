@@ -65,23 +65,13 @@ export class UserRepository {
     return (result.affected ?? 0) > 0;
   }
 
-  async deactivate(id: string): Promise<User | null> {
-    return await this.update(id, { isActive: false });
-  }
 
-  async activate(id: string): Promise<User | null> {
-    return await this.update(id, { isActive: true });
-  }
 
-  async updateLastLogin(id: string): Promise<void> {
-    await this.repository.update(id, { lastLoginAt: new Date() });
-  }
+
 
   async count(): Promise<number> {
     return await this.repository.count();
   }
 
-  async countByRole(role: UserRole): Promise<number> {
-    return await this.repository.count({ where: { role } });
-  }
+
 }
