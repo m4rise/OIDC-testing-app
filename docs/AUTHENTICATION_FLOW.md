@@ -172,7 +172,6 @@ console.log('🔒 Nonce validation passed');
 const claims = tokens.claims();
 const user = await this.createOrUpdateUser(claims);
 
-// AuthService.findOrCreateUserFromOIDC()
 const userInfo = {
   email: claims.email,
   firstName: claims.given_name || 'Unknown',

@@ -15,7 +15,7 @@ router.get('/auth', mockOidcController.authorize);
 router.post('/auth', express.urlencoded({ extended: true }), mockOidcController.handleAuth);
 
 // Token endpoint (supports authorization_code and refresh_token grants)
-router.post('/token', express.json(), mockOidcController.token);
+router.post('/token', express.json(), express.urlencoded({ extended: true }), mockOidcController.token);
 
 // UserInfo endpoint
 router.get('/userinfo', mockOidcController.userinfo);

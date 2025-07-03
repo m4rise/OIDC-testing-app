@@ -105,6 +105,9 @@ import { AuthService } from '../../core/services/auth.service';
           <mat-card-content>
             <div class="user-details">
               <div class="detail-item">
+                <strong>NNI:</strong> {{ currentUser()?.nni }}
+              </div>
+              <div class="detail-item">
                 <strong>Email:</strong> {{ currentUser()?.email }}
               </div>
               <div class="detail-item">

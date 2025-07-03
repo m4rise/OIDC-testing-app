@@ -25,6 +25,7 @@ export class UserController {
 
       res.json({
         id: user.id,
+        nni: user.nni,
         email: user.email,
         firstName: user.firstName,
         lastName: user.lastName,
@@ -81,6 +82,7 @@ export class UserController {
 
       res.json({
         id: user.id,
+        nni: user.nni,
         email: user.email,
         firstName: user.firstName,
         lastName: user.lastName,

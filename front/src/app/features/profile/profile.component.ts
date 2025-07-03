@@ -41,6 +41,15 @@ import { UserService } from '../../core/services/user.service';
 
           <mat-card-content>
             <form [formGroup]="profileForm" (ngSubmit)="updateProfile()">
+
+              <div class="form-row">
+                <mat-form-field appearance="outline" class="full-width">
+                  <mat-label>NNI</mat-label>
+                  <input matInput [value]="authService.currentUser()?.nni | titlecase" readonly>
+                  <mat-icon matSuffix>security</mat-icon>
+                </mat-form-field>
+              </div>
+
               <div class="form-row">
                 <mat-form-field appearance="outline" class="full-width">
                   <mat-label>Email</mat-label>

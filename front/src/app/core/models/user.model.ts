@@ -1,5 +1,6 @@
 export interface User {
   id: string;
+  nni: string; // OIDC sub stored as nni
   email: string;
   firstName: string;
   lastName: string;

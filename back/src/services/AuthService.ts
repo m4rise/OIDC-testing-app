@@ -5,6 +5,7 @@ import { User, UserRole } from '../entities/User';
 export interface SessionInfo {
   user: {
     id: string;
+    nni: string;  // OIDC sub stored as nni
     email: string;
     firstName: string;
     lastName: string;
@@ -30,6 +31,7 @@ export class AuthService {
       return {
         user: {
           id: '',
+          nni: '',
           email: '',
           firstName: '',
           lastName: '',
@@ -58,6 +60,7 @@ export class AuthService {
     return {
       user: {
         id: freshUser.id,
+        nni: freshUser.nni,
         email: freshUser.email,
         firstName: freshUser.firstName,
         lastName: freshUser.lastName,
@@ -94,45 +97,6 @@ export class AuthService {
   generateOIDCNonce(): string {
     return Math.random().toString(36).substring(2, 15) +
            Math.random().toString(36).substring(2, 15);
-  }
-
-  async findOrCreateUserFromOIDC(userInfo: {
-    email: string;
-    firstName: string;
-    lastName: string;
-    sub: string;
-  }): Promise<User> {
-    // Try to find existing user by sub (stored in nni field) - primary identifier
-    let user = await this.userRepository.findByNni(userInfo.sub);
-
-    if (user) {
-      // Update existing user's last login and email (in case it changed)
-      // Also update role in case it should change based on email
-      const expectedRole = this.getDefaultRoleForEmail(userInfo.email);
-      await this.userRepository.update(user.id, {
-        email: userInfo.email, // Update email in case it changed
-        role: expectedRole, // Update role in case it should change
-        lastLoginAt: new Date()
-      });
-      // Refetch the updated user
-      user = await this.userRepository.findById(user.id) || user;
-    } else {
-      // Create new user with sub as nni and default role based on email
-      const defaultRole = this.getDefaultRoleForEmail(userInfo.email);
-      user = await this.userRepository.create({
-        nni: userInfo.sub, // Store OIDC sub as the stable identifier
-        email: userInfo.email,
-        firstName: userInfo.firstName,
-        lastName: userInfo.lastName,
-        role: defaultRole,
-        isActive: true,
-        lastLoginAt: new Date(),
-      });
-
-      console.log(`✅ Created new user from OIDC: ${user.email} (nni: ${user.nni}) with role: ${user.role}`);
-    }
-
-    return user;
   }
 
   /**
@@ -175,17 +139,5 @@ export class AuthService {
 
     console.log(`🔧 Development mode: Assigning USER role to ${email}`);
     return UserRole.USER; // Default role
-  }
-
-  /**
-   * Refresh user profile from OIDC provider
-  /**
-   * Check if user profile needs refresh based on age
-   */
-  shouldRefreshProfile(user: User, maxAgeHours: number = 24): boolean {
-    if (!user.lastLoginAt) return true;
-
-    const ageHours = (Date.now() - user.lastLoginAt.getTime()) / (1000 * 60 * 60);
-    return ageHours > maxAgeHours;
   }
 }

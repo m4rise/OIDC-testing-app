@@ -2,6 +2,7 @@ import { UserRole } from '../entities/User';
 
 export interface MockUser {
   id: string;
+  nni:string;
   email: string;
   firstName: string;
   lastName: string;
@@ -13,6 +14,7 @@ export interface MockUser {
 export const mockUsers: MockUser[] = [
   {
     id: '550e8400-e29b-41d4-a716-446655440001',
+    nni: 'nni-admin-123',
     email: 'admin@example.com',
     firstName: 'Admin',
     lastName: 'User',
@@ -21,6 +23,7 @@ export const mockUsers: MockUser[] = [
   },
   {
     id: '550e8400-e29b-41d4-a716-446655440002',
+    nni: 'nni-user-456',
     email: 'user@example.com',
     firstName: 'Regular',
     lastName: 'User',
@@ -29,10 +32,11 @@ export const mockUsers: MockUser[] = [
   },
   {
     id: '550e8400-e29b-41d4-a716-446655440003',
+    nni: 'nni-moderator-789',
     email: 'manager@example.com',
     firstName: 'Manager',
     lastName: 'User',
-    role: UserRole.MODERATOR, // Fixed: should be MODERATOR, not USER
+    role: UserRole.MODERATOR,
     sub: 'mock-manager-789'
   }
 ];

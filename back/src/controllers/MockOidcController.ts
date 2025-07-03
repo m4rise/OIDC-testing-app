@@ -3,8 +3,14 @@ import crypto from 'crypto';
 import { mockUsers, MockUser } from '../config/mock-auth';
 
 export class MockOidcController {
-  private readonly MOCK_ISSUER = process.env.MOCK_OIDC_ISSUER || 'https://node.localhost/api/mock-oidc';
   private readonly MOCK_CLIENT_ID = 'mock-client';
+
+  // Dynamic issuer based on request context
+  private getIssuer(req: Request): string {
+    const protocol = req.headers['x-forwarded-proto'] || req.protocol || 'http';
+    const host = req.headers['x-forwarded-host'] || req.get('host') || 'localhost:5000';
+    return `${protocol}://${host}/api/mock-oidc`;
+  }
 
   // Generate a consistent RSA key pair for JWT signing (in production, use proper key management)
   private readonly keyPair = crypto.generateKeyPairSync('rsa', {
@@ -33,6 +39,13 @@ export class MockOidcController {
     scope: string;
     expires_at: number;
     used: boolean;
+  }>();
+
+  // Map access tokens to users for userinfo endpoint
+  private accessTokens = new Map<string, {
+    token: string;
+    user: MockUser;
+    expires_at: number;
   }>();
 
   // Valid redirect URIs (in production, these would be registered with the client)
@@ -394,7 +407,9 @@ export class MockOidcController {
   public token = (req: Request, res: Response): void => {
     const { grant_type, code, client_id, redirect_uri, code_verifier, refresh_token } = req.body;
 
-    console.log('🎭 Token Request with Enhanced Validation:', {
+    console.log('🎭 Token Request with Enhanced Validation:');
+    console.log('Full request body:', req.body);
+    console.log('Parsed params:', {
       grant_type, code: code ? code.substring(0, 8) + '...' : 'none',
       client_id, redirect_uri, code_verifier: code_verifier ? 'present' : 'none',
       refresh_token: refresh_token ? 'present' : 'none'
@@ -417,9 +432,16 @@ export class MockOidcController {
       const newAccessToken = this.generateSecureToken();
       const newRefreshToken = this.generateSecureToken();
 
+      // Store new access token mapping
+      this.accessTokens.set(newAccessToken, {
+        token: newAccessToken,
+        user: tokenData.user,
+        expires_at: Date.now() + (3600 * 1000) // 1 hour
+      });
+
       // Create new ID token
       const idTokenPayload = {
-        iss: this.MOCK_ISSUER,
+        iss: this.getIssuer(req),
         sub: tokenData.user.sub,
         aud: client_id,
         email: tokenData.user.email,
@@ -473,6 +495,16 @@ export class MockOidcController {
       return;
     }
 
+    console.log('🎭 Stored code data:', {
+      client_id: codeData.client_id,
+      redirect_uri: codeData.redirect_uri,
+      user: codeData.user.email
+    });
+    console.log('🎭 Request vs stored redirect_uri:');
+    console.log('  Request redirect_uri:', redirect_uri);
+    console.log('  Stored redirect_uri:', codeData.redirect_uri);
+    console.log('  Match:', codeData.redirect_uri === redirect_uri);
+
     // Check expiry
     if (Date.now() > codeData.expires_at) {
       this.authorizationCodes.delete(code);
@@ -487,8 +519,19 @@ export class MockOidcController {
       return;
     }
 
-    // Validate parameters match
-    if (codeData.client_id !== client_id || codeData.redirect_uri !== redirect_uri) {
+    // Validate parameters match (be flexible with HTTP/HTTPS for redirect_uri in development)
+    const requestRedirectUri = redirect_uri;
+    const storedRedirectUri = codeData.redirect_uri;
+
+    // Allow HTTP/HTTPS mismatch in development (containerized environments)
+    const uriMatch = requestRedirectUri === storedRedirectUri ||
+                     (process.env.NODE_ENV === 'development' &&
+                      requestRedirectUri?.replace(/^https?:/, '') === storedRedirectUri?.replace(/^https?:/, ''));
+
+    if (codeData.client_id !== client_id || !uriMatch) {
+      console.log('❌ Parameter validation failed:');
+      console.log('  client_id match:', codeData.client_id === client_id);
+      console.log('  redirect_uri match:', uriMatch);
       res.status(400).json({ error: 'invalid_grant', error_description: 'Parameter mismatch' });
       return;
     }
@@ -517,9 +560,19 @@ export class MockOidcController {
     const accessToken = this.generateSecureToken();
     const refreshToken = this.generateSecureToken();
 
+    // Store access token mapping for userinfo endpoint
+    this.accessTokens.set(accessToken, {
+      token: accessToken,
+      user: codeData.user,
+      expires_at: Date.now() + (3600 * 1000) // 1 hour
+    });
+
+    console.log('🎭 Generated access token:', accessToken.substring(0, 8) + '...');
+    console.log('🎭 Associated user sub:', codeData.user.sub);
+
     // Generate proper JWT ID token
     const idTokenPayload = {
-      iss: this.MOCK_ISSUER,
+      iss: this.getIssuer(req),
       sub: codeData.user.sub,
       aud: client_id,
       email: codeData.user.email,
@@ -571,11 +624,15 @@ export class MockOidcController {
 
     const token = authHeader.substring(7);
 
-    // In a real implementation, you would validate the JWT token
-    // For this mock, we'll just return user info based on a simple lookup
+    // Look up the access token to find the associated user
+    const tokenData = this.accessTokens.get(token);
+    console.log('🎭 Userinfo request for token:', token.substring(0, 8) + '...');
+    console.log('🎭 Token data found:', tokenData ? 'yes' : 'no');
+    if (tokenData) {
+      console.log('🎭 User sub from token data:', tokenData.user.sub);
+    }
 
-    // Mock validation - in reality you'd decode and verify the JWT
-    if (!token || token.length < 10) {
+    if (!tokenData) {
       res.status(401).json({
         error: 'invalid_token',
         error_description: 'Invalid access token'
@@ -583,15 +640,25 @@ export class MockOidcController {
       return;
     }
 
-    // Return user info for the mock admin user
+    // Check if token is expired
+    if (Date.now() > tokenData.expires_at) {
+      this.accessTokens.delete(token);
+      res.status(401).json({
+        error: 'invalid_token',
+        error_description: 'Access token expired'
+      });
+      return;
+    }
+
+    // Return user info for the associated user
     res.json({
-      sub: 'mock-admin-123',
-      email: 'admin@example.com',
+      sub: tokenData.user.sub,
+      email: tokenData.user.email,
       email_verified: true,
-      given_name: 'Admin',
-      family_name: 'User',
-      name: 'Admin User',
-      picture: 'https://via.placeholder.com/150',
+      given_name: tokenData.user.firstName,
+      family_name: tokenData.user.lastName,
+      name: `${tokenData.user.firstName} ${tokenData.user.lastName}`,
+      picture: 'https://via.placeholder.com/155',
       updated_at: Math.floor(Date.now() / 1000)
     });
   };
@@ -608,13 +675,22 @@ export class MockOidcController {
       return;
     }
 
-    // Mock introspection - in reality you'd validate the token properly
+    // Look up the access token
+    const tokenData = this.accessTokens.get(token);
+    if (!tokenData || Date.now() > tokenData.expires_at) {
+      res.json({
+        active: false
+      });
+      return;
+    }
+
+    // Return active token info
     res.json({
       active: true,
       client_id: this.MOCK_CLIENT_ID,
       scope: 'openid profile email',
-      sub: 'mock-admin-123',
-      exp: Math.floor(Date.now() / 1000) + 3600,
+      sub: tokenData.user.sub,
+      exp: Math.floor(tokenData.expires_at / 1000),
       iat: Math.floor(Date.now() / 1000),
       token_type: 'Bearer'
     });

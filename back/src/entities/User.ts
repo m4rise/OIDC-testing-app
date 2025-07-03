@@ -73,9 +73,4 @@ export class User {
     if (!this.lastLoginAt) return Infinity;
     return Date.now() - this.lastLoginAt.getTime();
   }
-
-  get isProfileStale(): boolean {
-    const maxAge = 24 * 60 * 60 * 1000; // 24 hours
-    return this.profileAge > maxAge;
-  }
 }

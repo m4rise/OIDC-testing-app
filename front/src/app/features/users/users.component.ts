@@ -50,6 +50,8 @@ import { User } from '../../core/models/user.model';
                 <th mat-header-cell *matHeaderCellDef>Name</th>
                 <td mat-cell *matCellDef="let user">
                   <div class="user-info">
+                    <strong>{{ user.nni }}</strong>
+                    <br>
                     <strong>{{ user.fullName }}</strong>
                     <br>
                     <small>{{ user.email }}</small>

@@ -274,6 +274,26 @@ export class AuthController {
     }
   };
 
+  // Handle authentication failure
+  failure = (req: Request, res: Response) => {
+    console.log('❌ Authentication failure accessed');
+
+    // Clear any session data
+    delete (req.session as any).oidcState;
+    delete (req.session as any).oidcNonce;
+
+    // Handle both API and browser requests
+    if (req.headers.accept?.includes('application/json')) {
+      res.status(401).json({
+        error: 'Authentication failed',
+        message: 'Login was unsuccessful'
+      });
+    } else {
+      const frontendUrl = UrlHelper.getFrontendUrl();
+      res.redirect(`${frontendUrl}/login?error=auth_failed`);
+    }
+  };
+
   // Helper method for refreshing real OIDC tokens
   private async refreshRealTokens(req: Request, tokenInfo: TokenInfo): Promise<boolean> {
     try {

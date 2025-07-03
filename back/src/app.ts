@@ -156,6 +156,7 @@ app.use(session({
     conString: `postgresql://${process.env.POSTGRES_USER}:${encodedPassword}@${process.env.PG_HOST}:${process.env.PG_PORT}/${process.env.POSTGRES_DB}`,
     tableName: 'session',
     createTableIfMissing: true,
+    pruneSessionInterval: 900, // in seconds : 15 minutes - prune old sessions every 15 minutes
   }),
   secret: process.env.SESSION_SECRET || 'your-secret-key-change-in-production',
   resave: false,

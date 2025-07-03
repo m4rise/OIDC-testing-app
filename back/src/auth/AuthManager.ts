@@ -46,8 +46,4 @@ export class AuthManager {
     const errorMessage = error?.message?.toLowerCase() || '';
     return securityKeywords.some(keyword => errorMessage.includes(keyword));
   }
-
-  getStrategy(): AuthStrategy {
-    return this.strategy;
-  }
 }
