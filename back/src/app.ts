@@ -125,6 +125,8 @@ app.use(cors({
     const allowedOrigins = [
       'https://front.localhost',
       'https://node.localhost', // Allow same-origin requests for mock OIDC
+      'http://localhost:5000',  // Allow internal container requests for mock OIDC
+      'http://127.0.0.1:5000',  // Allow localhost requests for mock OIDC
       process.env.FRONTEND_URL
     ].filter(Boolean);
 

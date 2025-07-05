@@ -1,27 +1,53 @@
 import { Request, Response } from 'express';
 import { AuthService } from '../services/AuthService';
-import { AuthManager } from '../auth/AuthManager';
 import { TokenInfo } from '../middleware/security';
 import { UrlHelper } from '../utils/urlHelper';
+import passport from '../config/auth';
 
 export class AuthController {
   private authService: AuthService;
-  private authManager: AuthManager;
 
   constructor() {
     this.authService = new AuthService();
-    this.authManager = new AuthManager();
   }
 
-  // Initiate OIDC login - much cleaner with strategy pattern
-  login = async (req: Request, res: Response, next: Function) => {
-    return this.authManager.initiateLogin(req, res, next);
+  // Initiate OIDC login using standard passport authenticate
+  login = (req: Request, res: Response, next: Function) => {
+    // Store returnTo URL in session
+    const returnTo = req.query.returnTo as string || '/';
+    console.log('🎭 Storing returnTo in session:', returnTo);
+
+    if (req.session) {
+      (req.session as any).returnTo = returnTo;
+      console.log('🎭 Session ID when storing returnTo:', req.sessionID);
+    }
+
+    // Use standard passport authenticate
+    return passport.authenticate('oidc', {
+      scope: 'openid profile email'
+    })(req, res, next);
   };
 
-  // Handle OIDC callback - delegated to strategy
-  callback = async (req: Request, res: Response, next: Function) => {
-    return this.authManager.handleCallback(req, res, next);
+  // Handle OIDC callback using standard passport authenticate
+  callback = (req: Request, res: Response, next: Function) => {
+    return passport.authenticate('oidc', {
+      successRedirect: this.getSuccessRedirect(req),
+      failureRedirect: this.getFailureRedirect(),
+      failureFlash: false
+    })(req, res, next);
   };
+
+  private getSuccessRedirect(req: Request): string {
+    const returnTo = (req.session as any)?.returnTo || '/';
+    const frontendUrl = UrlHelper.getFrontendUrl();
+    console.log('🎭 Redirecting to success URL:', `${frontendUrl}${returnTo}`);
+    return `${frontendUrl}${returnTo}`;
+  }
+
+  private getFailureRedirect(): string {
+    const frontendUrl = UrlHelper.getFrontendUrl();
+    return `${frontendUrl}/login?error=auth_failed`;
+  }
 
   // Get current session info
   getSession = async (req: Request, res: Response) => {
@@ -36,15 +62,16 @@ export class AuthController {
 
   // Check authentication status
   checkAuth = (req: Request, res: Response) => {
+    const isAuthenticated = !!(req.session as any)?.passport?.user || !!req.user;
     res.json({
-      isAuthenticated: req.isAuthenticated(),
+      isAuthenticated,
       user: req.user || null
     });
   };
 
   // Logout user
   logout = (req: Request, res: Response): void => {
-    const wasAuthenticated = req.isAuthenticated();
+    const isAuthenticated = !!(req.session as any)?.passport?.user || !!req.user;
     const userEmail = req.user ? (req.user as any).email : 'anonymous';
 
     req.logout((err) => {
@@ -68,7 +95,7 @@ export class AuthController {
         if (req.headers.accept?.includes('application/json')) {
           res.json({
             message: 'Logged out successfully',
-            wasAuthenticated
+            wasAuthenticated: isAuthenticated
           });
         } else {
           res.redirect(`${process.env.FRONTEND_URL || 'https://front.localhost'}/login?logged_out=true`);
@@ -80,7 +107,8 @@ export class AuthController {
   // Get token status and expiration information
   getTokenStatus = async (req: Request, res: Response) => {
     try {
-      if (!req.isAuthenticated()) {
+      const isAuthenticated = !!(req.session as any)?.passport?.user || !!req.user;
+      if (!isAuthenticated) {
         res.status(401).json({ error: 'Not authenticated' });
         return;
       }
@@ -121,7 +149,8 @@ export class AuthController {
   // Manually refresh token
   refreshToken = async (req: Request, res: Response) => {
     try {
-      if (!req.isAuthenticated()) {
+      const isAuthenticated = !!(req.session as any)?.passport?.user || !!req.user;
+      if (!isAuthenticated) {
         res.status(401).json({ error: 'Not authenticated' });
         return;
       }
@@ -186,7 +215,7 @@ export class AuthController {
   // Test endpoint that doesn't require authentication
   getTokenStatusPublic = async (req: Request, res: Response) => {
     try {
-      const isAuthenticated = req.isAuthenticated();
+      const isAuthenticated = !!(req.session as any)?.passport?.user || !!req.user;
       const hasSession = !!req.session;
       const sessionId = req.sessionID;
 
@@ -251,9 +280,10 @@ export class AuthController {
   // Debug endpoint to check session contents
   getSessionDebug = async (req: Request, res: Response) => {
     try {
+      const isAuthenticated = !!(req.session as any)?.passport?.user || !!req.user;
       const sessionData = {
         sessionId: req.sessionID,
-        isAuthenticated: req.isAuthenticated(),
+        isAuthenticated,
         user: req.user ? {
           id: (req.user as any).id,
           nni: (req.user as any).nni,
