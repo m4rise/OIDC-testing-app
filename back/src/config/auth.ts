@@ -44,18 +44,21 @@ export const configureOIDC = async () => {
         execute: [client.allowInsecureRequests],
       });
 
-      // Then create a new configuration with external URLs for browser access
+      // Create a hybrid configuration:
+      // - Use external URL for authorization endpoint (browser redirects)
+      // - Use internal URLs for token, userinfo, jwks endpoints (server-to-server)
       const internalMetadata = internalConfig.serverMetadata();
       const externalIssuer = UrlHelper.getOidcIssuerUrl('external');
+      const internalIssuer = UrlHelper.getOidcIssuerUrl('internal');
 
-      // Create server metadata with external URLs that browsers can access
-      const externalMetadata = {
-        issuer: externalIssuer,
-        authorization_endpoint: `${externalIssuer}/auth`,
-        token_endpoint: `${externalIssuer}/token`,
-        userinfo_endpoint: `${externalIssuer}/userinfo`,
-        jwks_uri: `${externalIssuer}/jwks`,
-        end_session_endpoint: `${externalIssuer}/logout`,
+      // Create server metadata with hybrid URLs
+      const hybridMetadata = {
+        issuer: internalIssuer, // Use internal issuer to match JWT tokens
+        authorization_endpoint: `${externalIssuer}/auth`, // External - browser access
+        token_endpoint: `${internalIssuer}/token`, // Internal - server-to-server
+        userinfo_endpoint: `${internalIssuer}/userinfo`, // Internal - server-to-server
+        jwks_uri: `${internalIssuer}/jwks`, // Internal - server-to-server
+        end_session_endpoint: `${externalIssuer}/logout`, // External - browser redirect
         // Copy other important metadata from internal discovery
         response_types_supported: internalMetadata.response_types_supported,
         subject_types_supported: internalMetadata.subject_types_supported,
@@ -66,11 +69,16 @@ export const configureOIDC = async () => {
         response_modes_supported: internalMetadata.response_modes_supported
       };
 
-      console.log('🔧 Creating external configuration for browser access');
-      console.log('🔧 Authorization endpoint:', externalMetadata.authorization_endpoint);
+      console.log('🔧 Creating hybrid configuration for containerized environment');
+      console.log('🔧 Authorization endpoint (external):', hybridMetadata.authorization_endpoint);
+      console.log('🔧 Token endpoint (internal):', hybridMetadata.token_endpoint);
+      console.log('🔧 Userinfo endpoint (internal):', hybridMetadata.userinfo_endpoint);
 
-      // Create new configuration with external endpoints
-      config = new client.Configuration(externalMetadata, clientId, clientSecret);
+      // Create new configuration with hybrid endpoints
+      config = new client.Configuration(hybridMetadata, clientId, clientSecret);
+
+      // Apply allowInsecureRequests to the configuration for internal HTTP endpoints
+      client.allowInsecureRequests(config);
     } else {
       config = await client.discovery(discoveryServer, clientId, clientSecret);
     }
