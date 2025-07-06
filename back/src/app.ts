@@ -165,7 +165,7 @@ app.use(session({
   saveUninitialized: false, // Don't create sessions for unauthenticated users
   rolling: true, // Reset expiration on activity (sliding session)
   cookie: {
-    secure: true, // HTTPS only - critical for production
+    secure: true, // HTTPS only - you confirmed you're using HTTPS locally
     httpOnly: true, // Prevent XSS attacks by blocking JavaScript access
     maxAge: isDevelopment
       ? 24 * 60 * 60 * 1000 // 24 hours in development for convenience

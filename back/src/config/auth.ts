@@ -70,9 +70,6 @@ export const configureOIDC = async () => {
       };
 
       console.log('🔧 Creating hybrid configuration for containerized environment');
-      console.log('🔧 Authorization endpoint (external):', hybridMetadata.authorization_endpoint);
-      console.log('🔧 Token endpoint (internal):', hybridMetadata.token_endpoint);
-      console.log('🔧 Userinfo endpoint (internal):', hybridMetadata.userinfo_endpoint);
 
       // Create new configuration with hybrid endpoints
       config = new client.Configuration(hybridMetadata, clientId, clientSecret);
@@ -88,7 +85,6 @@ export const configureOIDC = async () => {
       try {
         // Get claims from tokens
         const claims = tokens.claims();
-        console.log('🔒 Processing OIDC claims:', { sub: claims.sub, email: claims.email });
 
         // Find or create user using UserRepository directly
         const userRepository = AppDataSource.getRepository(User);
@@ -154,7 +150,6 @@ export const configureOIDC = async () => {
         params.set('acr_values', process.env.OIDC_ACR_VALUES);
       }
 
-      console.log('🔐 Enhanced authorization request with mandatory parameters:', Array.from(params.entries()));
       return params;
     };
 
@@ -168,18 +163,19 @@ export const configureOIDC = async () => {
   }
 };
 
-// Serialize user for session - following passport.ts example
+// Serialize user for session
 passport.serializeUser((user: any, cb) => {
   cb(null, user.id);
 });
 
-// Deserialize user from session - following passport.ts example
+// Deserialize user from session
 passport.deserializeUser(async (id: string, cb) => {
   try {
     const userRepository = AppDataSource.getRepository(User);
     const user = await userRepository.findOne({ where: { id } });
     return cb(null, user);
   } catch (error) {
+    console.error('❌ Error in deserializeUser:', error);
     return cb(error, null);
   }
 });

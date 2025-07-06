@@ -12,10 +12,6 @@ router.post('/logout', authController.logout);
 router.get('/logout', authController.logout); // Support GET for easier testing
 router.get('/session', authController.getSession);
 router.get('/check', authController.checkAuth);
-router.get('/token-status', authController.getTokenStatus);
-router.get('/token-info', authController.getTokenStatusPublic); // Public version with helpful messages
 router.get('/session-debug', authController.getSessionDebug); // Debug session contents
-router.post('/refresh-token', authController.refreshToken);
-router.get('/failure', authController.failure); // Authentication failure endpoint
 
 export default router;
