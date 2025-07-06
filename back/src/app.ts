@@ -18,9 +18,6 @@ import authRoutes from './routes/auth';
 import userRoutes from './routes/users';
 import mockOidcRoutes from './routes/mock-oidc';
 
-// Import security middleware
-import { sessionSecurity } from './middleware/security';
-
 // Load environment variables
 dotenv.config();
 
@@ -186,9 +183,6 @@ app.use(session({
 // Passport middleware
 // app.use(passport.initialize()); // Only needed for special cases or compatibility with old passport versions
 app.use(passport.session());
-
-// Enhanced security middleware - only session security (headers handled by Helmet)
-app.use(sessionSecurity);
 
 // Debug middleware - simplified auth logging
 if (process.env.NODE_ENV === 'development') {
