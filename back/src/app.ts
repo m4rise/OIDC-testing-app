@@ -169,7 +169,7 @@ app.use(session({
     secure: true, // HTTPS only
     httpOnly: true, // Prevent XSS attacks by blocking JavaScript access
     maxAge: isDevelopment
-      ? 1 * 1000 // 1 minute for testing in development
+      ? 1 * 60 * 1000 // 1 minute for testing in development
       : 1 * 60 * 60 * 1000, // 1 hour in production for security
     sameSite: isDevelopment
       ? 'none' // Allow cross-origin in development (front.localhost <-> node.localhost)
