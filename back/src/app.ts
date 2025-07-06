@@ -124,6 +124,7 @@ app.use(cors({
 
     const allowedOrigins = [
       'https://front.localhost',
+      'http://localhost:42000',
       'https://node.localhost', // Allow same-origin requests for mock OIDC
       'http://localhost:5000',  // Allow internal container requests for mock OIDC
       'http://127.0.0.1:5000',  // Allow localhost requests for mock OIDC
@@ -165,11 +166,11 @@ app.use(session({
   saveUninitialized: false, // Don't create sessions for unauthenticated users
   rolling: true, // Reset expiration on activity (sliding session)
   cookie: {
-    secure: true, // HTTPS only - you confirmed you're using HTTPS locally
+    secure: true, // HTTPS only
     httpOnly: true, // Prevent XSS attacks by blocking JavaScript access
     maxAge: isDevelopment
-      ? 24 * 60 * 60 * 1000 // 24 hours in development for convenience
-      : 8 * 60 * 60 * 1000, // 8 hours in production for security
+      ? 1 * 1000 // 1 minute for testing in development
+      : 1 * 60 * 60 * 1000, // 1 hour in production for security
     sameSite: isDevelopment
       ? 'none' // Allow cross-origin in development (front.localhost <-> node.localhost)
       : 'strict', // Strong CSRF protection in production (same domain)
@@ -183,7 +184,7 @@ app.use(session({
 }));
 
 // Passport middleware
-app.use(passport.initialize());
+// app.use(passport.initialize()); // Only needed for special cases or compatibility with old passport versions
 app.use(passport.session());
 
 // Enhanced security middleware - only session security (headers handled by Helmet)
