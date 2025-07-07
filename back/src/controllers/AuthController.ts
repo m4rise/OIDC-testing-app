@@ -20,9 +20,7 @@ export class AuthController {
     }
 
     // Use standard passport authenticate
-    return passport.authenticate('oidc', {
-      scope: 'openid profile email'
-    })(req, res, next);
+    return passport.authenticate('oidc')(req, res, next);
   };
 
   // Handle OIDC callback using standard passport authenticate with proper callback
@@ -113,14 +111,7 @@ export class AuthController {
       const sessionData = {
         sessionId: req.sessionID,
         isAuthenticated,
-        user: req.user ? {
-          id: (req.user as any).id,
-          nni: (req.user as any).nni,
-          email: (req.user as any).email,
-          firstName: (req.user as any).firstName,
-          lastName: (req.user as any).lastName,
-          role: (req.user as any).role
-        } : null,
+        user: req.user ?? null,
         sessionKeys: Object.keys(req.session),
         rawSession: process.env.NODE_ENV === 'development' ? req.session : 'hidden_in_production'
       };

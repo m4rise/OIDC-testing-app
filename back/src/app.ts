@@ -159,14 +159,14 @@ app.use(session({
     pruneSessionInterval: 900, // in seconds : 15 minutes - prune old sessions every 15 minutes
   }),
   secret: process.env.SESSION_SECRET || 'your-secret-key-change-in-production',
-  resave: false,
+  resave: true, // Resave session even if unmodified
   saveUninitialized: false, // Don't create sessions for unauthenticated users
   rolling: true, // Reset expiration on activity (sliding session)
   cookie: {
     secure: true, // HTTPS only
     httpOnly: true, // Prevent XSS attacks by blocking JavaScript access
     maxAge: isDevelopment
-      ? 1 * 60 * 1000 // 1 minute for testing in development
+      ? 2 * 60 * 1000 // 2 minutes for testing in development
       : 1 * 60 * 60 * 1000, // 1 hour in production for security
     sameSite: isDevelopment
       ? 'none' // Allow cross-origin in development (front.localhost <-> node.localhost)
@@ -181,8 +181,7 @@ app.use(session({
 }));
 
 // Passport middleware
-// app.use(passport.initialize()); // Only needed for special cases or compatibility with old passport versions
-app.use(passport.session());
+app.use(passport.session()); // Use session middleware with pauseStream option
 
 // Debug middleware - simplified auth logging
 if (process.env.NODE_ENV === 'development') {

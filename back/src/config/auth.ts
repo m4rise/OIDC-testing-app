@@ -81,7 +81,9 @@ export const configureOIDC = async () => {
     }
 
     // Verify function following the passport.ts example
-    const verify = async (tokens: any, verified: any) => {
+    // Signature is different because passReqToCallback is set to true in the Strategy options
+    // This allows us to access req.session directly in the verify function
+    const verify = async (req: any, tokens: any, verified: any) => {
       try {
         // Get claims from tokens
         const claims = tokens.claims();
@@ -125,6 +127,7 @@ export const configureOIDC = async () => {
       config,
       scope: 'openid profile email',
       callbackURL,
+      passReqToCallback: true,
     };
 
     // Create the strategy
