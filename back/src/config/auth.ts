@@ -88,6 +88,10 @@ export const configureOIDC = async () => {
         // Get claims from tokens
         const claims = tokens.claims();
 
+        // Extract JWT expiry information for session management
+        const jwtIat = claims.iat ? new Date(claims.iat * 1000) : new Date();
+        const jwtExp = claims.exp ? new Date(claims.exp * 1000) : null;
+
         // Find or create user using UserRepository directly
         const userRepository = AppDataSource.getRepository(User);
         let user = await userRepository.findOne({ where: { nni: claims.sub } });
@@ -103,16 +107,25 @@ export const configureOIDC = async () => {
                   (claims.email?.includes('admin') ? UserRole.ADMIN :
                    claims.email?.includes('manager') ? UserRole.MODERATOR : UserRole.USER),
             isActive: true,
-            lastLoginAt: new Date()
+            lastLoginAt: jwtIat
           };
           user = userRepository.create(userData);
           user = await userRepository.save(user);
           console.log('🔒 Created new user from OIDC:', user.email);
         } else {
-          // Update last login
-          user.lastLoginAt = new Date();
+          // Update last login with JWT iat timestamp
+          user.lastLoginAt = jwtIat;
           await userRepository.save(user);
           console.log('🔒 Updated existing user login:', user.email);
+        }
+
+        // Store JWT expiry temporarily on user object for AuthController to access
+        // This is a temporary property that won't be persisted to database
+        if (jwtExp) {
+          (user as any).tempJwtExpiry = jwtExp.getTime();
+          console.log('🔒 Attached JWT expiry to user object:', jwtExp.toISOString());
+        } else {
+          console.log('🔒 JWT exp claim not found, will fallback to lastLoginAt + default lifetime');
         }
 
         verified(null, user);

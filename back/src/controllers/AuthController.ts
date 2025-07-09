@@ -43,6 +43,15 @@ export class AuthController {
           return res.redirect(this.getFailureRedirect());
         }
 
+        // Store JWT expiry in session after passport login completes
+        // This ensures it persists after session serialization/deserialization
+        if ((user as any).tempJwtExpiry) {
+          (req.session as any).jwtExpiry = (user as any).tempJwtExpiry;
+          console.log('🔒 Stored JWT expiry in session after login:', new Date((user as any).tempJwtExpiry).toISOString());
+          // Clean up temporary property
+          delete (user as any).tempJwtExpiry;
+        }
+
         const successUrl = this.getSuccessRedirect(req);
         return res.redirect(successUrl);
       });

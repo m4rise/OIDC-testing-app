@@ -12,6 +12,7 @@ import { AppDataSource } from './data-source';
 // Temporarily disable auth and route imports to isolate path-to-regexp error
 import { configureOIDC } from './config/auth';
 import passport from './config/auth';
+import { sessionSecurity } from './middleware/security';
 
 // Import routes
 import authRoutes from './routes/auth';
@@ -182,6 +183,9 @@ app.use(session({
 
 // Passport middleware
 app.use(passport.session()); // Use session middleware with pauseStream option
+
+// Session security middleware - enforces JWT token expiration
+app.use(sessionSecurity);
 
 // Debug middleware - simplified auth logging
 if (process.env.NODE_ENV === 'development') {
