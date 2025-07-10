@@ -51,10 +51,7 @@ AppDataSource.initialize()
 
 function setupApp() {
 
-// Configure OIDC
-configureOIDC().catch((error: any) => {
-  console.error('❌ Failed to configure OIDC:', error);
-});
+// Note: OIDC configuration moved to after route registration to ensure mock routes are available
 
 // Middleware
 const isDevelopment = process.env.NODE_ENV === 'development';
@@ -167,8 +164,8 @@ app.use(session({
     secure: true, // HTTPS only
     httpOnly: true, // Prevent XSS attacks by blocking JavaScript access
     maxAge: isDevelopment
-      ? 2 * 60 * 1000 // 2 minutes for testing in development
-      : 1 * 60 * 60 * 1000, // 1 hour in production for security
+      ? parseInt(process.env.SESSION_ROLLING_MINUTES || "5") * 60 * 1000 // X minutes for testing in development
+      : parseInt(process.env.SESSION_ROLLING_MINUTES || "60") * 60 * 1000, // 1 hour in production for security
     sameSite: isDevelopment
       ? 'none' // Allow cross-origin in development (front.localhost <-> node.localhost)
       : 'strict', // Strong CSRF protection in production (same domain)
@@ -216,8 +213,19 @@ app.use('/api/users', userRoutes);
 
 // Mock OIDC routes (for development)
 if (process.env.NODE_ENV === 'development') {
+  console.log('🔧 Registering mock OIDC routes at /api/mock-oidc');
   app.use('/api/mock-oidc', mockOidcRoutes);
+  console.log('✅ Mock OIDC routes registered');
 }
+
+// Configure OIDC after routes are registered to ensure mock routes are available
+setTimeout(async () => {
+  try {
+    await configureOIDC();
+  } catch (error) {
+    console.error('❌ Failed to configure OIDC:', error);
+  }
+}, 1000); // Wait 1 second for routes to be fully registered
 
 // 404 handler
 app.use((req, res) => {
