@@ -6,18 +6,24 @@ import { UrlHelper } from '../utils/urlHelper';
 
 // Configure OIDC Strategy using standard openid-client/passport
 export const configureOIDC = async () => {
-  const useMockOIDC = process.env.NODE_ENV === 'development' && process.env.USE_MOCK_OIDC === 'true';
+  // Default to dev interceptor in development (unless explicitly disabled)
+  const useDevInterceptor = process.env.NODE_ENV === 'development' && process.env.DEV_BYPASS_AUTH !== 'false';
+  const useMockOIDC = process.env.NODE_ENV === 'development' && process.env.USE_MOCK_OIDC === 'true' && !useDevInterceptor;
 
-  // Use mock OIDC in development if enabled
+  // Use legacy mock OIDC only if explicitly enabled and dev interceptor is disabled
   if (useMockOIDC) {
-    console.log('🎭 Using Mock OIDC Provider for development');
+    console.log('🎭 Using legacy Mock OIDC Provider for development');
     configureMockOIDC();
   }
 
-  if (!useMockOIDC && (!process.env.OIDC_CLIENT_ID || !process.env.OIDC_CLIENT_SECRET || !process.env.OIDC_ISSUER)) {
+  // For dev interceptor or real OIDC, use the standard flow
+  const usingMockFlow = useDevInterceptor || useMockOIDC;
+
+  if (!usingMockFlow && (!process.env.OIDC_CLIENT_ID || !process.env.OIDC_CLIENT_SECRET || !process.env.OIDC_ISSUER)) {
     console.warn('OIDC configuration is incomplete. Skipping OIDC strategy configuration.');
     console.warn('To enable OIDC authentication, set OIDC_CLIENT_ID, OIDC_CLIENT_SECRET, and OIDC_ISSUER environment variables.');
-    console.warn('To use Mock OIDC for development, set USE_MOCK_OIDC=true in your .env file.');
+    console.warn('For development, the Dev Interceptor is enabled by default (set DEV_BYPASS_AUTH=false to disable).');
+    console.warn('For legacy mock OIDC, set USE_MOCK_OIDC=true and DEV_BYPASS_AUTH=false.');
     return;
   }
 
@@ -27,7 +33,7 @@ export const configureOIDC = async () => {
     const { Strategy } = require('openid-client/passport');
 
     // Get configuration - use internal URL for discovery but external for browser redirects
-    const discoveryServer = new URL(useMockOIDC
+    const discoveryServer = new URL(usingMockFlow
       ? UrlHelper.getOidcIssuerUrl('internal')  // Use internal URL for server-to-server discovery
       : UrlHelper.getOidcIssuerUrl('external'));
     const clientId = process.env.OIDC_CLIENT_ID || 'mock-client';
@@ -38,7 +44,7 @@ export const configureOIDC = async () => {
 
     // Create configuration using discovery
     let config;
-    if (useMockOIDC) {
+    if (usingMockFlow) {
       // First, discover using internal URL
       const internalConfig = await client.discovery(discoveryServer, clientId, clientSecret, undefined, {
         execute: [client.allowInsecureRequests],

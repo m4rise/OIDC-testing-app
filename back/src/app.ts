@@ -13,6 +13,7 @@ import { AppDataSource } from './data-source';
 import { configureOIDC } from './config/auth';
 import passport from './config/auth';
 import { sessionSecurity } from './middleware/security';
+import { createOidcDevInterceptor } from './middleware/oidc-dev-interceptor';
 
 // Import routes
 import authRoutes from './routes/auth';
@@ -184,6 +185,14 @@ app.use(passport.session()); // Use session middleware with pauseStream option
 // Session security middleware - enforces JWT token expiration
 app.use(sessionSecurity);
 
+// OIDC Dev Interceptor - MUST be registered BEFORE auth routes and Passport config
+// This intercepts OIDC provider calls when DEV_BYPASS_AUTH=true in development
+if (process.env.NODE_ENV === 'development' && process.env.DEV_BYPASS_AUTH === 'true') {
+  console.log('🔧 Registering OIDC dev interceptor...');
+  app.use(createOidcDevInterceptor());
+  console.log('✅ OIDC dev interceptor registered');
+}
+
 // Debug middleware - simplified auth logging
 if (process.env.NODE_ENV === 'development') {
   app.use((req, res, next) => {
@@ -211,11 +220,19 @@ app.get('/health', (req, res) => {
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
 
-// Mock OIDC routes (for development)
+// OIDC Dev Interceptor OR Mock OIDC routes (for development)
 if (process.env.NODE_ENV === 'development') {
-  console.log('🔧 Registering mock OIDC routes at /api/mock-oidc');
-  app.use('/api/mock-oidc', mockOidcRoutes);
-  console.log('✅ Mock OIDC routes registered');
+  if (process.env.DEV_BYPASS_AUTH !== 'false') {
+    // Default to dev interceptor in development (unless explicitly disabled)
+    console.log('🔧 Using OIDC dev interceptor (default for development)');
+    // Dev interceptor is already registered above
+  } else if (process.env.USE_MOCK_OIDC === 'true') {
+    console.log('🔧 Using legacy mock OIDC routes (DEV_BYPASS_AUTH=false)');
+    app.use('/api/mock-oidc', mockOidcRoutes);
+    console.log('✅ Legacy mock OIDC routes registered');
+  } else {
+    console.log('⚠️  No development OIDC configured. Set DEV_BYPASS_AUTH=true or USE_MOCK_OIDC=true');
+  }
 }
 
 // Configure OIDC after routes are registered to ensure mock routes are available

@@ -26,20 +26,29 @@ export class UrlHelper {
    * @returns The OIDC issuer URL for the specified context
    */
   static getOidcIssuerUrl(context: CommunicationContext): string {
-    const useMockOIDC = process.env.NODE_ENV === 'development' && process.env.USE_MOCK_OIDC === 'true';
+    const useDevInterceptor = process.env.NODE_ENV === 'development' && process.env.DEV_BYPASS_AUTH === 'true';
+    const useMockOIDC = process.env.NODE_ENV === 'development' && process.env.USE_MOCK_OIDC === 'true' && !useDevInterceptor;
 
-    if (!useMockOIDC) {
-      // For real OIDC, always use the configured issuer (external)
-      return process.env.OIDC_ISSUER!;
+    if (useDevInterceptor) {
+      // For dev interceptor, use the mock OIDC issuer paths (since that's what the interceptor intercepts)
+      if (context === 'internal') {
+        return process.env.MOCK_OIDC_INTERNAL_ISSUER || 'http://localhost:5000/api/mock-oidc';
+      } else {
+        return process.env.MOCK_OIDC_ISSUER || 'https://node.localhost/api/mock-oidc';
+      }
     }
 
-    if (context === 'internal') {
-      // For internal discovery (container-to-self communication)
-      return process.env.MOCK_OIDC_INTERNAL_ISSUER || 'http://localhost:5000/api/mock-oidc';
-    } else {
-      // For external URLs (redirects, frontend communication)
-      return process.env.MOCK_OIDC_ISSUER || 'https://node.localhost/api/mock-oidc';
+    if (useMockOIDC) {
+      // For legacy mock OIDC
+      if (context === 'internal') {
+        return process.env.MOCK_OIDC_INTERNAL_ISSUER || 'http://localhost:5000/api/mock-oidc';
+      } else {
+        return process.env.MOCK_OIDC_ISSUER || 'https://node.localhost/api/mock-oidc';
+      }
     }
+
+    // For real OIDC, always use the configured issuer (external)
+    return process.env.OIDC_ISSUER!;
   }
 
   /**
