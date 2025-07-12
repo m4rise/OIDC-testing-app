@@ -23,13 +23,12 @@ DEV_USER_ROLES=user,admin
 DEV_JWT_EXPIRY_MINUTES=60
 ```
 
-3. To disable the dev interceptor and use legacy mock OIDC:
+3. To disable the dev interceptor (not recommended):
 ```bash
 DEV_BYPASS_AUTH=false
-USE_MOCK_OIDC=true
 ```
 
-**Note**: The dev interceptor works by intercepting requests to `/api/mock-oidc/*` and returning mock responses inline. It's simpler, more reliable, and easier to debug than the legacy mock OIDC server.
+**Note**: The dev interceptor works by intercepting requests to `/api/mock-oidc/*` and returning mock responses inline. It's simpler, more reliable, and easier to debug than any external mock servers.
 
 ## How It Works
 
@@ -98,13 +97,6 @@ When `DEV_BYPASS_AUTH=true` and `NODE_ENV=development`:
 ```bash
 NODE_ENV=development
 # DEV_BYPASS_AUTH=true (default in development)
-```
-
-### Development Mode (Legacy Mock OIDC)
-```bash
-NODE_ENV=development
-DEV_BYPASS_AUTH=false
-USE_MOCK_OIDC=true
 ```
 
 ### Production Mode

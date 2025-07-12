@@ -1,29 +1,17 @@
 import passport from 'passport';
 import { AppDataSource } from '../data-source';
 import { User, UserRole } from '../entities/User';
-import { configureMockOIDC } from './mock-auth';
-import { UrlHelper } from '../utils/urlHelper';
+import { config as appConfig } from './environment';
 
 // Configure OIDC Strategy using standard openid-client/passport
 export const configureOIDC = async () => {
   // Default to dev interceptor in development (unless explicitly disabled)
-  const useDevInterceptor = process.env.NODE_ENV === 'development' && process.env.DEV_BYPASS_AUTH !== 'false';
-  const useMockOIDC = process.env.NODE_ENV === 'development' && process.env.USE_MOCK_OIDC === 'true' && !useDevInterceptor;
+  const useDevInterceptor = appConfig.isDevelopment && appConfig.dev.bypassAuth;
 
-  // Use legacy mock OIDC only if explicitly enabled and dev interceptor is disabled
-  if (useMockOIDC) {
-    console.log('🎭 Using legacy Mock OIDC Provider for development');
-    configureMockOIDC();
-  }
-
-  // For dev interceptor or real OIDC, use the standard flow
-  const usingMockFlow = useDevInterceptor || useMockOIDC;
-
-  if (!usingMockFlow && (!process.env.OIDC_CLIENT_ID || !process.env.OIDC_CLIENT_SECRET || !process.env.OIDC_ISSUER)) {
+  if (!useDevInterceptor && (!appConfig.oidc.clientId || !appConfig.oidc.clientSecret || !appConfig.oidc.issuer)) {
     console.warn('OIDC configuration is incomplete. Skipping OIDC strategy configuration.');
     console.warn('To enable OIDC authentication, set OIDC_CLIENT_ID, OIDC_CLIENT_SECRET, and OIDC_ISSUER environment variables.');
     console.warn('For development, the Dev Interceptor is enabled by default (set DEV_BYPASS_AUTH=false to disable).');
-    console.warn('For legacy mock OIDC, set USE_MOCK_OIDC=true and DEV_BYPASS_AUTH=false.');
     return;
   }
 
@@ -32,59 +20,22 @@ export const configureOIDC = async () => {
     const client = await import('openid-client');
     const { Strategy } = require('openid-client/passport');
 
-    // Get configuration - use internal URL for discovery but external for browser redirects
-    const discoveryServer = new URL(usingMockFlow
-      ? UrlHelper.getOidcIssuerUrl('internal')  // Use internal URL for server-to-server discovery
-      : UrlHelper.getOidcIssuerUrl('external'));
-    const clientId = process.env.OIDC_CLIENT_ID || 'mock-client';
-    const clientSecret = process.env.OIDC_CLIENT_SECRET || 'mock-secret';
-    const callbackURL = new URL(UrlHelper.getCallbackUrl());
+    // Get configuration
+    const issuerUrl = useDevInterceptor
+      ? appConfig.dev.oidcIssuer  // Dev interceptor URL
+      : appConfig.oidc.issuer!;   // Real OIDC provider URL (validated above)
 
-    console.log('✅ Configuring OIDC strategy with discovery server:', discoveryServer.href);
+    const clientId = appConfig.oidc.clientId;
+    const clientSecret = appConfig.oidc.clientSecret;
+    const callbackURL = appConfig.oidc.callbackUrl;
+
+    console.log('✅ Configuring OIDC strategy with issuer:', issuerUrl);
+    console.log('✅ Callback URL:', callbackURL);
 
     // Create configuration using discovery
-    let config;
-    if (usingMockFlow) {
-      // First, discover using internal URL
-      const internalConfig = await client.discovery(discoveryServer, clientId, clientSecret, undefined, {
-        execute: [client.allowInsecureRequests],
-      });
-
-      // Create a hybrid configuration:
-      // - Use external URL for authorization endpoint (browser redirects)
-      // - Use internal URLs for token, userinfo, jwks endpoints (server-to-server)
-      const internalMetadata = internalConfig.serverMetadata();
-      const externalIssuer = UrlHelper.getOidcIssuerUrl('external');
-      const internalIssuer = UrlHelper.getOidcIssuerUrl('internal');
-
-      // Create server metadata with hybrid URLs
-      const hybridMetadata = {
-        issuer: internalIssuer, // Use internal issuer to match JWT tokens
-        authorization_endpoint: `${externalIssuer}/auth`, // External - browser access
-        token_endpoint: `${internalIssuer}/token`, // Internal - server-to-server
-        userinfo_endpoint: `${internalIssuer}/userinfo`, // Internal - server-to-server
-        jwks_uri: `${internalIssuer}/jwks`, // Internal - server-to-server
-        end_session_endpoint: `${externalIssuer}/logout`, // External - browser redirect
-        // Copy other important metadata from internal discovery
-        response_types_supported: internalMetadata.response_types_supported,
-        subject_types_supported: internalMetadata.subject_types_supported,
-        id_token_signing_alg_values_supported: internalMetadata.id_token_signing_alg_values_supported,
-        scopes_supported: internalMetadata.scopes_supported,
-        code_challenge_methods_supported: internalMetadata.code_challenge_methods_supported,
-        grant_types_supported: internalMetadata.grant_types_supported,
-        response_modes_supported: internalMetadata.response_modes_supported
-      };
-
-      console.log('🔧 Creating hybrid configuration for containerized environment');
-
-      // Create new configuration with hybrid endpoints
-      config = new client.Configuration(hybridMetadata, clientId, clientSecret);
-
-      // Apply allowInsecureRequests to the configuration for internal HTTP endpoints
-      client.allowInsecureRequests(config);
-    } else {
-      config = await client.discovery(discoveryServer, clientId, clientSecret);
-    }
+    const config = await client.discovery(new URL(issuerUrl), clientId, clientSecret, undefined, {
+      execute: useDevInterceptor ? [client.allowInsecureRequests] : undefined,
+    });
 
     // Verify function following the passport.ts example
     // Signature is different because passReqToCallback is set to true in the Strategy options
@@ -109,7 +60,7 @@ export const configureOIDC = async () => {
             email: claims.email,
             firstName: claims.given_name || claims.name?.split(' ')[0] || 'Unknown',
             lastName: claims.family_name || claims.name?.split(' ').slice(1).join(' ') || 'User',
-            role: process.env.NODE_ENV === 'production' ? UserRole.USER :
+            role: appConfig.isProduction ? UserRole.USER :
                   (claims.email?.includes('admin') ? UserRole.ADMIN :
                    claims.email?.includes('manager') ? UserRole.MODERATOR : UserRole.USER),
             isActive: true,
@@ -168,8 +119,8 @@ export const configureOIDC = async () => {
       }
 
       // Add ACR values if configured
-      if (process.env.OIDC_ACR_VALUES) {
-        params.set('acr_values', process.env.OIDC_ACR_VALUES);
+      if (appConfig.oidc.acrValues) {
+        params.set('acr_values', appConfig.oidc.acrValues);
       }
 
       return params;

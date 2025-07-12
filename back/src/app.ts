@@ -7,24 +7,25 @@ import cors from 'cors';
 import helmet from 'helmet';
 import compression from 'compression';
 import morgan from 'morgan';
-import dotenv from 'dotenv';
 import { AppDataSource } from './data-source';
 // Temporarily disable auth and route imports to isolate path-to-regexp error
 import { configureOIDC } from './config/auth';
 import passport from './config/auth';
 import { sessionSecurity } from './middleware/security';
 import { createOidcDevInterceptor } from './middleware/oidc-dev-interceptor';
+import { config } from './config/environment';
 
 // Import routes
 import authRoutes from './routes/auth';
 import userRoutes from './routes/users';
-import mockOidcRoutes from './routes/mock-oidc';
-
-// Load environment variables
-dotenv.config();
 
 const app: express.Express = express();
-const PORT = process.env.PORT || 5000;
+const PORT = config.port;
+
+// Get URLs from centralized configuration
+const BACKEND_URL = config.backendUrl;
+const FRONTEND_URL = config.frontendUrl;
+const INTERNAL_BACKEND_URL = config.internalBackendUrl;
 
 // Session store
 const pgSession = connectPgSimple(session);
@@ -32,10 +33,10 @@ const pgSession = connectPgSimple(session);
 // Initialize database connection
 console.log('🔄 Attempting to connect to database...');
 console.log('Database config:', {
-  host: process.env.PG_HOST,
-  port: process.env.PG_PORT,
-  database: process.env.POSTGRES_DB,
-  username: process.env.POSTGRES_USER
+  host: config.database.host,
+  port: config.database.port,
+  database: config.database.database,
+  username: config.database.username
 });
 
 AppDataSource.initialize()
@@ -51,225 +52,203 @@ AppDataSource.initialize()
   });
 
 function setupApp() {
+  // Build form-action CSP directive dynamically based on OIDC configuration
+  function buildFormActionDirective(): string[] {
+    const formActions = ["'self'", BACKEND_URL, FRONTEND_URL];
 
-// Note: OIDC configuration moved to after route registration to ensure mock routes are available
-
-// Middleware
-const isDevelopment = process.env.NODE_ENV === 'development';
-
-// Build form-action CSP directive dynamically based on OIDC configuration
-function buildFormActionDirective(): string[] {
-  const formActions = ["'self'", "https://node.localhost", "https://front.localhost"];
-
-  // Add mock OIDC endpoint only in development when enabled
-  if (isDevelopment && process.env.USE_MOCK_OIDC === 'true') {
-    const mockOidcIssuer = process.env.MOCK_OIDC_ISSUER || 'https://node.localhost/api/mock-oidc';
-    if (!formActions.includes(mockOidcIssuer)) {
-      formActions.push(mockOidcIssuer);
+    // Add real OIDC issuer if configured (for production)
+    if (config.oidc.issuer) {
+      const realOidcIssuer = config.oidc.issuer;
+      if (!formActions.includes(realOidcIssuer)) {
+        formActions.push(realOidcIssuer);
+      }
     }
+
+    return formActions;
   }
 
-  // Add real OIDC issuer if configured (for production)
-  if (process.env.OIDC_ISSUER) {
-    const realOidcIssuer = process.env.OIDC_ISSUER;
-    if (!formActions.includes(realOidcIssuer)) {
-      formActions.push(realOidcIssuer);
-    }
-  }
-
-  return formActions;
-}
-
-// Always enable CSP for better security
-app.use(helmet({
-  contentSecurityPolicy: {
-    directives: {
-      defaultSrc: ["'self'"],
-        styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com", "https:"],
-        fontSrc: ["'self'", "https://fonts.gstatic.com", "https:", "data:"],
-        scriptSrc: ["'self'", "'unsafe-inline'"],
-        imgSrc: ["'self'", "data:", "https:"],
-        formAction: buildFormActionDirective(),
-        connectSrc: ["'self'", "https://node.localhost", "https://front.localhost", "https:", "wss:"],
-        frameSrc: ["'self'", "https:"],
-        childSrc: ["'self'", "https:"],
+  // Always enable CSP for better security
+  app.use(helmet({
+    contentSecurityPolicy: {
+      directives: {
+        defaultSrc: ["'self'"],
+          styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com", "https:"],
+          fontSrc: ["'self'", "https://fonts.gstatic.com", "https:", "data:"],
+          scriptSrc: ["'self'", "'unsafe-inline'"],
+          imgSrc: ["'self'", "data:", "https:"],
+          formAction: buildFormActionDirective(),
+          connectSrc: ["'self'", BACKEND_URL, FRONTEND_URL, INTERNAL_BACKEND_URL, "https:", "wss:"],
+          frameSrc: ["'self'", "https:"],
+          childSrc: ["'self'", "https:"],
+        },
       },
+      crossOriginEmbedderPolicy: false,
+      // Enhanced security headers for production
+      xFrameOptions: { action: 'deny' },
+      xContentTypeOptions: true,
+      xXssProtection: true,
+      referrerPolicy: { policy: 'strict-origin-when-cross-origin' },
+      hsts: {
+        maxAge: 31536000,
+        includeSubDomains: true,
+        preload: true
+      }
+    }));
+
+  // Basic middleware
+  app.use(compression());
+  app.use(morgan('combined'));
+
+  // CORS configuration - single comprehensive setup
+  app.use(cors({
+    origin: function (origin, callback) {
+      // Allow requests with no origin or null origin (like direct browser navigation, form submissions)
+      if (!origin || origin === 'null') return callback(null, true);
+
+      const allowedOrigins = [
+        FRONTEND_URL,
+        'http://localhost:42000', // Angular dev server fallback
+        BACKEND_URL, // Allow same-origin requests for dev interceptor
+        INTERNAL_BACKEND_URL,  // Allow internal container requests for dev interceptor
+        'http://localhost:5000',  // Allow localhost requests for dev interceptor
+      ].filter(Boolean);
+
+      if (allowedOrigins.includes(origin)) {
+        return callback(null, true);
+      } else {
+        console.log('CORS: Rejected origin:', origin);
+        console.log('CORS: Allowed origins:', allowedOrigins);
+        return callback(new Error('Not allowed by CORS'));
+      }
     },
-    crossOriginEmbedderPolicy: false,
-    // Enhanced security headers for production
-    xFrameOptions: { action: 'deny' },
-    xContentTypeOptions: true,
-    xXssProtection: true,
-    referrerPolicy: { policy: 'strict-origin-when-cross-origin' },
-    hsts: {
-      maxAge: 31536000,
-      includeSubDomains: true,
-      preload: true
-    }
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'x-requested-with', 'X-Requested-With'],
+    exposedHeaders: ['set-cookie'],
+    optionsSuccessStatus: 200, // Some legacy browsers (IE11, various SmartTVs) choke on 204
+    preflightContinue: false   // Pass control to next handler after preflight
   }));
 
-// Basic middleware
-app.use(compression());
-app.use(morgan('combined'));
+  // Body parsing middleware
+  app.use(express.json({ limit: '10mb' }));
+  app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
-// CORS configuration - single comprehensive setup
-app.use(cors({
-  origin: function (origin, callback) {
-    // Allow requests with no origin or null origin (like direct browser navigation, form submissions)
-    if (!origin || origin === 'null') return callback(null, true);
+  // Session configuration with enhanced security
+  const encodedPassword = encodeURIComponent(config.database.password);
 
-    const allowedOrigins = [
-      'https://front.localhost',
-      'http://localhost:42000',
-      'https://node.localhost', // Allow same-origin requests for mock OIDC
-      'http://localhost:5000',  // Allow internal container requests for mock OIDC
-      'http://127.0.0.1:5000',  // Allow localhost requests for mock OIDC
-      process.env.FRONTEND_URL
-    ].filter(Boolean);
+  app.use(session({
+    store: new pgSession({
+      conString: `postgresql://${config.database.username}:${encodedPassword}@${config.database.host}:${config.database.port}/${config.database.database}`,
+      tableName: 'session',
+      createTableIfMissing: true,
+      pruneSessionInterval: 900, // in seconds : 15 minutes - prune old sessions every 15 minutes
+    }),
+    secret: config.session.secret,
+    resave: true, // Resave session even if unmodified
+    saveUninitialized: false, // Don't create sessions for unauthenticated users
+    rolling: true, // Reset expiration on activity (sliding session)
+    cookie: {
+      secure: true, // HTTPS only
+      httpOnly: true, // Prevent XSS attacks by blocking JavaScript access
+      maxAge: config.session.rollingMinutes * 60 * 1000, // Rolling session duration (resets on activity)
+      sameSite: config.isDevelopment
+        ? 'none' // Allow cross-origin in development (front.localhost <-> node.localhost)
+        : 'strict', // Strong CSRF protection in production (same domain)
+      path: '/', // Cookie available for all app paths
+      domain: config.isDevelopment ? undefined : config.session.cookieDomain, // Explicit domain in production
+    },
+    name: config.isDevelopment
+      ? 'connect.sid' // Default name for development
+      : config.session.cookieName || 'app_session', // Custom name in production
+    proxy: true, // Trust proxy headers from Traefik
+  }));
 
-    if (allowedOrigins.includes(origin)) {
-      return callback(null, true);
+  // Passport middleware
+  app.use(passport.session()); // Use session middleware with pauseStream option
+
+  // Session security middleware - enforces JWT token expiration
+  app.use(sessionSecurity);
+
+  // OIDC Dev Interceptor - MUST be registered BEFORE auth routes and Passport config
+  // This intercepts OIDC provider calls when DEV_BYPASS_AUTH=true in development
+  if (config.isDevelopment && config.dev.bypassAuth) {
+    console.log('🔧 Registering OIDC dev interceptor...');
+    app.use(createOidcDevInterceptor());
+    console.log('✅ OIDC dev interceptor registered');
+  }
+
+  // Debug middleware - simplified auth logging
+  if (config.isDevelopment) {
+    app.use((req, res, next) => {
+      // Only log auth-related requests to reduce noise
+      if (req.path.startsWith('/api/auth')) {
+        console.log(`\n=== ${req.method} ${req.path} ===`);
+        console.log('User authenticated:', req.isAuthenticated());
+        console.log('================================\n');
+      }
+      next();
+    });
+  }
+
+  // Health check endpoint
+  app.get('/health', (req, res) => {
+    res.json({
+      status: 'ok',
+      message: 'Server is running',
+      timestamp: new Date().toISOString(),
+      environment: config.nodeEnv,
+    });
+  });
+
+  // API routes
+  app.use('/api/auth', authRoutes);
+  app.use('/api/users', userRoutes);
+
+  // OIDC Dev Interceptor (for development)
+  if (config.isDevelopment) {
+    if (config.dev.bypassAuth) {
+      // Default to dev interceptor in development (unless explicitly disabled)
+      console.log('🔧 Using OIDC dev interceptor (default for development)');
+      // Dev interceptor is already registered above
     } else {
-      console.log('CORS: Rejected origin:', origin);
-      console.log('CORS: Allowed origins:', allowedOrigins);
-      return callback(new Error('Not allowed by CORS'));
+      console.log('⚠️  DEV_BYPASS_AUTH=false: No development OIDC configured. Set DEV_BYPASS_AUTH=true to enable dev interceptor');
     }
-  },
-  credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'x-requested-with', 'X-Requested-With'],
-  exposedHeaders: ['set-cookie'],
-  optionsSuccessStatus: 200, // Some legacy browsers (IE11, various SmartTVs) choke on 204
-  preflightContinue: false   // Pass control to next handler after preflight
-}));
+  }
 
-// Body parsing middleware
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ extended: true, limit: '10mb' }));
-
-// Session configuration with enhanced security
-const encodedPassword = encodeURIComponent(process.env.POSTGRES_PASSWORD || '');
-
-app.use(session({
-  store: new pgSession({
-    conString: `postgresql://${process.env.POSTGRES_USER}:${encodedPassword}@${process.env.PG_HOST}:${process.env.PG_PORT}/${process.env.POSTGRES_DB}`,
-    tableName: 'session',
-    createTableIfMissing: true,
-    pruneSessionInterval: 900, // in seconds : 15 minutes - prune old sessions every 15 minutes
-  }),
-  secret: process.env.SESSION_SECRET || 'your-secret-key-change-in-production',
-  resave: true, // Resave session even if unmodified
-  saveUninitialized: false, // Don't create sessions for unauthenticated users
-  rolling: true, // Reset expiration on activity (sliding session)
-  cookie: {
-    secure: true, // HTTPS only
-    httpOnly: true, // Prevent XSS attacks by blocking JavaScript access
-    maxAge: isDevelopment
-      ? parseInt(process.env.SESSION_ROLLING_MINUTES || "5") * 60 * 1000 // X minutes for testing in development
-      : parseInt(process.env.SESSION_ROLLING_MINUTES || "60") * 60 * 1000, // 1 hour in production for security
-    sameSite: isDevelopment
-      ? 'none' // Allow cross-origin in development (front.localhost <-> node.localhost)
-      : 'strict', // Strong CSRF protection in production (same domain)
-    path: '/', // Cookie available for all app paths
-    domain: isDevelopment ? undefined : process.env.COOKIE_DOMAIN, // Explicit domain in production
-  },
-  name: isDevelopment
-    ? 'connect.sid' // Default name for development
-    : process.env.SESSION_COOKIE_NAME || 'app_session', // Custom name in production
-  proxy: true, // Trust proxy headers from Traefik
-}));
-
-// Passport middleware
-app.use(passport.session()); // Use session middleware with pauseStream option
-
-// Session security middleware - enforces JWT token expiration
-app.use(sessionSecurity);
-
-// OIDC Dev Interceptor - MUST be registered BEFORE auth routes and Passport config
-// This intercepts OIDC provider calls when DEV_BYPASS_AUTH=true in development
-if (process.env.NODE_ENV === 'development' && process.env.DEV_BYPASS_AUTH === 'true') {
-  console.log('🔧 Registering OIDC dev interceptor...');
-  app.use(createOidcDevInterceptor());
-  console.log('✅ OIDC dev interceptor registered');
-}
-
-// Debug middleware - simplified auth logging
-if (process.env.NODE_ENV === 'development') {
-  app.use((req, res, next) => {
-    // Only log auth-related requests to reduce noise
-    if (req.path.startsWith('/api/auth') || req.path.startsWith('/api/mock-oidc')) {
-      console.log(`\n=== ${req.method} ${req.path} ===`);
-      console.log('User authenticated:', req.isAuthenticated());
-      console.log('================================\n');
+  // Configure OIDC after routes are registered to ensure mock routes are available
+  setTimeout(async () => {
+    try {
+      await configureOIDC();
+    } catch (error) {
+      console.error('❌ Failed to configure OIDC:', error);
     }
-    next();
+  }, 1000); // Wait 1 second for routes to be fully registered
+
+  // 404 handler
+  app.use((req, res) => {
+    res.status(404).json({
+      error: 'Not Found',
+      message: 'The requested endpoint does not exist',
+      path: req.originalUrl,
+    });
   });
-}
 
-// Health check endpoint
-app.get('/health', (req, res) => {
-  res.json({
-    status: 'ok',
-    message: 'Server is running',
-    timestamp: new Date().toISOString(),
-    environment: process.env.NODE_ENV || 'development',
+  // Global error handler
+  app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
+    console.error('Global error handler:', err);
+
+    res.status(err.status || 500).json({
+      error: config.isProduction ? 'Internal Server Error' : err.message,
+      ...(config.isDevelopment && { stack: err.stack }),
+    });
   });
-});
 
-// API routes
-app.use('/api/auth', authRoutes);
-app.use('/api/users', userRoutes);
-
-// OIDC Dev Interceptor OR Mock OIDC routes (for development)
-if (process.env.NODE_ENV === 'development') {
-  if (process.env.DEV_BYPASS_AUTH !== 'false') {
-    // Default to dev interceptor in development (unless explicitly disabled)
-    console.log('🔧 Using OIDC dev interceptor (default for development)');
-    // Dev interceptor is already registered above
-  } else if (process.env.USE_MOCK_OIDC === 'true') {
-    console.log('🔧 Using legacy mock OIDC routes (DEV_BYPASS_AUTH=false)');
-    app.use('/api/mock-oidc', mockOidcRoutes);
-    console.log('✅ Legacy mock OIDC routes registered');
-  } else {
-    console.log('⚠️  No development OIDC configured. Set DEV_BYPASS_AUTH=true or USE_MOCK_OIDC=true');
-  }
-}
-
-// Configure OIDC after routes are registered to ensure mock routes are available
-setTimeout(async () => {
-  try {
-    await configureOIDC();
-  } catch (error) {
-    console.error('❌ Failed to configure OIDC:', error);
-  }
-}, 1000); // Wait 1 second for routes to be fully registered
-
-// 404 handler
-app.use((req, res) => {
-  res.status(404).json({
-    error: 'Not Found',
-    message: 'The requested endpoint does not exist',
-    path: req.originalUrl,
+  // Start server
+  app.listen(PORT, () => {
+    console.log(`🚀 Server running on port ${PORT}`);
+    console.log(`📱 Environment: ${config.nodeEnv}`);
+    console.log(`🔗 Health check: ${BACKEND_URL}/health`);
   });
-});
-
-// Global error handler
-app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
-  console.error('Global error handler:', err);
-
-  res.status(err.status || 500).json({
-    error: process.env.NODE_ENV === 'production' ? 'Internal Server Error' : err.message,
-    ...(process.env.NODE_ENV === 'development' && { stack: err.stack }),
-  });
-});
-
-// Start server
-app.listen(PORT, () => {
-  console.log(`🚀 Server running on port ${PORT}`);
-  console.log(`📱 Environment: ${process.env.NODE_ENV || 'development'}`);
-  console.log(`🔗 Health check: https://node.localhost/health`);
-});
-
 } // End of setupApp function
 
 export default app;

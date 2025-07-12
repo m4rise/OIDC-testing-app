@@ -1,7 +1,7 @@
 import { Request, Response } from 'express';
 import { AuthService } from '../services/AuthService';
-import { UrlHelper } from '../utils/urlHelper';
 import passport from '../config/auth';
+import { config } from '../config/environment';
 
 export class AuthController {
   private authService: AuthService;
@@ -107,7 +107,7 @@ export class AuthController {
             wasAuthenticated: isAuthenticated
           });
         } else {
-          res.redirect(`${process.env.FRONTEND_URL || 'https://front.localhost'}/login?logged_out=true`);
+          res.redirect(`${config.frontendUrl}/login?logged_out=true`);
         }
       });
     });
@@ -122,7 +122,7 @@ export class AuthController {
         isAuthenticated,
         user: req.user ?? null,
         sessionKeys: Object.keys(req.session),
-        rawSession: process.env.NODE_ENV === 'development' ? req.session : 'hidden_in_production'
+        rawSession: config.isDevelopment ? req.session : 'hidden_in_production'
       };
 
       res.json(sessionData);
@@ -133,13 +133,14 @@ export class AuthController {
   };
 
   private getSuccessRedirect(req: Request): string {
-    const returnTo = (req.session as any)?.returnTo || '/';
-    const frontendUrl = UrlHelper.getFrontendUrl();
+    const returnTo = (req.session as any)?.returnTo || config.redirects.loginSuccessPath;
+    const frontendUrl = config.frontendUrl;
     return `${frontendUrl}${returnTo}`;
   }
 
   private getFailureRedirect(): string {
-    const frontendUrl = UrlHelper.getFrontendUrl();
-    return `${frontendUrl}/login?error=auth_failed`;
+    const frontendUrl = config.frontendUrl;
+    const failurePath = config.redirects.loginFailurePath;
+    return `${frontendUrl}${failurePath}`;
   }
 }

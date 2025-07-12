@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import { User } from '../entities/User';
+import { config } from '../config/environment';
 
 /**
  * Session security middleware that enforces JWT token expiration
@@ -34,9 +35,8 @@ export const sessionSecurity = (req: Request, res: Response, next: NextFunction)
       console.log(`🔒 Using actual JWT expiry from session: ${jwtExpiry.toISOString()}, expired: ${tokenExpired}`);
     } else if (user.lastLoginAt) {
       // Fallback: Use lastLoginAt + configured session max age
-      // Note: For Mock OIDC, JWT expiry is controlled by MOCK_OIDC_JWT_EXPIRY_MINUTES
-      const sessionMaxAgeMinutes = parseInt(process.env.SESSION_MAXAGE_MINUTES || '60');
-      const defaultJwtLifetimeMs = sessionMaxAgeMinutes * 60 * 1000; // Convert minutes to milliseconds
+      // Note: For dev interceptor, JWT expiry is controlled by DEV_JWT_EXPIRY_MINUTES
+      const defaultJwtLifetimeMs = config.session.maxAgeMinutes * 60 * 1000; // Convert minutes to milliseconds
       const calculatedExpiry = new Date(user.lastLoginAt.getTime() + defaultJwtLifetimeMs);
 
       if (Date.now() > calculatedExpiry.getTime()) {

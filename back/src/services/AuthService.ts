@@ -1,6 +1,7 @@
 import { Request } from 'express';
 import { UserRepository } from '../repositories/UserRepository';
 import { User, UserRole } from '../entities/User';
+import { config } from '../config/environment';
 
 export interface SessionInfo {
   user: {
@@ -103,9 +104,9 @@ export class AuthService {
   public getDefaultRoleForEmail(email: string): UserRole {
     // SECURITY: Only assign special roles based on email in development
     // In production, all users get USER role by default and must be promoted by admin
-    const isDevelopment = process.env.NODE_ENV === 'development';
-    const isLocalhost = process.env.FRONTEND_URL?.includes('localhost') ||
-                       process.env.BACKEND_URL?.includes('localhost');
+    const isDevelopment = config.isDevelopment;
+    const isLocalhost = config.frontendUrl.includes('localhost') ||
+                       config.backendUrl.includes('localhost');
 
     if (!isDevelopment || !isLocalhost) {
       console.warn(`🔒 Production/Remote mode: User ${email} created with default USER role. Admin privileges must be granted manually.`);
