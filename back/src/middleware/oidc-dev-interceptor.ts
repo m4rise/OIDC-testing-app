@@ -29,7 +29,6 @@ interface DevOidcConfig {
   userName: string;
   userFirstName: string;
   userLastName: string;
-  userRoles: string[];
   // JWT settings
   jwtExpiryMinutes: number;
 }
@@ -43,8 +42,8 @@ function getDevOidcConfig(): DevOidcConfig {
 
   return {
     enabled,
-    // Use environment variables for all configuration
-    issuer: appConfig.dev.oidcIssuer,
+    // Use production OIDC issuer for realistic interception
+    issuer: appConfig.oidc.issuer || 'http://localhost:5000/api/mock-oidc',
     clientId: appConfig.oidc.clientId,
     clientSecret: appConfig.oidc.clientSecret,
     redirectUri: appConfig.oidc.callbackUrl,
@@ -55,7 +54,6 @@ function getDevOidcConfig(): DevOidcConfig {
     userName: appConfig.dev.user.name,
     userFirstName: firstName || 'Dev',
     userLastName: lastName,
-    userRoles: appConfig.dev.user.roles,
     // JWT settings
     jwtExpiryMinutes: appConfig.dev.jwt.expiryMinutes,
   };
@@ -143,7 +141,7 @@ export function createOidcDevInterceptor(): express.Router {
   }
 
   console.log('🔧 OIDC dev interceptor enabled for issuer:', devConfig.issuer);
-  console.log('🎭 Dev user:', devConfig.userEmail, 'with roles:', devConfig.userRoles.join(','));
+  console.log('🎭 Dev user:', devConfig.userId);
 
   // Parse the issuer URL to determine what paths to intercept
   const issuerUrl = new URL(devConfig.issuer);
@@ -400,7 +398,7 @@ export function createOidcDevInterceptor(): express.Router {
     const tokenResponse = {
       access_token: accessToken,
       token_type: 'Bearer',
-      expires_in: 3600, // 1 hour (same as MockOidcController)
+      expires_in: devConfig.jwtExpiryMinutes * 60, // Convert minutes to seconds using config
       id_token: idToken,
       // Include refresh_token only if offline_access scope was requested (matching MockOidcController)
       ...(authData.scope.includes('offline_access') && { refresh_token: refreshToken }),

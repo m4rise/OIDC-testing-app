@@ -19,7 +19,6 @@ NODE_ENV=development
 DEV_USER_ID=dev-user-123
 DEV_USER_EMAIL=dev.user@example.com
 DEV_USER_NAME=Dev User
-DEV_USER_ROLES=user,admin
 DEV_JWT_EXPIRY_MINUTES=60
 ```
 
@@ -78,7 +77,6 @@ When `DEV_BYPASS_AUTH=true` and `NODE_ENV=development`:
 - `DEV_USER_ID` - User ID for the mock user (default: `dev-user-123`)
 - `DEV_USER_EMAIL` - Email for the mock user (default: `dev.user@example.com`)
 - `DEV_USER_NAME` - Display name (default: `Dev User`)
-- `DEV_USER_ROLES` - Comma-separated roles (default: `user,admin`)
 
 ### JWT Configuration
 - `DEV_JWT_EXPIRY_MINUTES` - JWT expiry time in minutes (default: `60`)
@@ -113,13 +111,9 @@ OIDC_CLIENT_SECRET=your-real-client-secret
 You can quickly test different user scenarios by changing the environment variables:
 
 ```bash
-# Test as admin user
-DEV_USER_ROLES=admin,superuser
-DEV_USER_EMAIL=admin@example.com
-
-# Test as regular user
-DEV_USER_ROLES=user
-DEV_USER_EMAIL=user@example.com
+DEV_USER_ID=dev-new-user-456
+DEV_USER_EMAIL=dev.user.2@example.com
+DEV_USER_NAME=NewDev NewUser
 
 # Test with short JWT expiry
 DEV_JWT_EXPIRY_MINUTES=1

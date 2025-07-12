@@ -21,9 +21,7 @@ export const configureOIDC = async () => {
     const { Strategy } = require('openid-client/passport');
 
     // Get configuration
-    const issuerUrl = useDevInterceptor
-      ? appConfig.dev.oidcIssuer  // Dev interceptor URL
-      : appConfig.oidc.issuer!;   // Real OIDC provider URL (validated above)
+    const issuerUrl = appConfig.oidc.issuer || `${appConfig.internalBackendUrl}/api/mock-oidc`;  // Use production issuer (or fallback)
 
     const clientId = appConfig.oidc.clientId;
     const clientSecret = appConfig.oidc.clientSecret;
@@ -60,9 +58,7 @@ export const configureOIDC = async () => {
             email: claims.email,
             firstName: claims.given_name || claims.name?.split(' ')[0] || 'Unknown',
             lastName: claims.family_name || claims.name?.split(' ').slice(1).join(' ') || 'User',
-            role: appConfig.isProduction ? UserRole.USER :
-                  (claims.email?.includes('admin') ? UserRole.ADMIN :
-                   claims.email?.includes('manager') ? UserRole.MODERATOR : UserRole.USER),
+            role: appConfig.isProduction ? UserRole.USER : UserRole.ADMIN, // Default to USER in production, ADMIN in development
             isActive: true,
             lastLoginAt: jwtIat
           };

@@ -85,48 +85,4 @@ export class AuthService {
 
     return rolePermissions[role as keyof typeof rolePermissions] || [];
   }
-
-
-
-  /**
-   * Get default role for a user based on their email
-   *
-   * SECURITY NOTE: This method only assigns elevated roles (ADMIN/MODERATOR) in development mode.
-   * In production, ALL users are created with USER role by default to prevent privilege escalation.
-   *
-   * Production workflow:
-   * 1. User signs up via OIDC → Gets USER role
-   * 2. Admin manually promotes user to ADMIN/MODERATOR via admin interface
-   *
-   * @param email - User's email address
-   * @returns UserRole - Always USER in production, email-based roles in development
-   */
-  public getDefaultRoleForEmail(email: string): UserRole {
-    // SECURITY: Only assign special roles based on email in development
-    // In production, all users get USER role by default and must be promoted by admin
-    const isDevelopment = config.isDevelopment;
-    const isLocalhost = config.frontendUrl.includes('localhost') ||
-                       config.backendUrl.includes('localhost');
-
-    if (!isDevelopment || !isLocalhost) {
-      console.warn(`🔒 Production/Remote mode: User ${email} created with default USER role. Admin privileges must be granted manually.`);
-      return UserRole.USER;
-    }
-
-    // Development-only: Assign roles based on well-known test emails
-    const adminEmails = ['admin@example.com'];
-    const moderatorEmails = ['manager@example.com'];
-
-    if (adminEmails.includes(email.toLowerCase())) {
-      console.log(`🔧 Development mode: Assigning ADMIN role to ${email}`);
-      return UserRole.ADMIN;
-    }
-    if (moderatorEmails.includes(email.toLowerCase())) {
-      console.log(`🔧 Development mode: Assigning MODERATOR role to ${email}`);
-      return UserRole.MODERATOR;
-    }
-
-    console.log(`🔧 Development mode: Assigning USER role to ${email}`);
-    return UserRole.USER; // Default role
-  }
 }

@@ -21,6 +21,7 @@ export interface AppConfig {
   backendUrl: string;
   frontendUrl: string;
   internalBackendUrl: string;
+  internalFrontendUrl: string;
 
   // Database
   database: {
@@ -52,12 +53,10 @@ export interface AppConfig {
   // Development Authentication Bypass
   dev: {
     bypassAuth: boolean;
-    oidcIssuer: string;
     user: {
       id: string;
       email: string;
       name: string;
-      roles: string[];
     };
     jwt: {
       expiryMinutes: number;
@@ -88,6 +87,7 @@ function getConfig(): AppConfig {
     backendUrl: process.env.BACKEND_URL || 'https://node.localhost',
     frontendUrl: process.env.FRONTEND_URL || 'https://front.localhost',
     internalBackendUrl: process.env.INTERNAL_BACKEND_URL || 'http://localhost:5000',
+    internalFrontendUrl: process.env.INTERNAL_FRONTEND_URL || 'http://localhost:4200',
 
     // Database
     database: {
@@ -119,12 +119,10 @@ function getConfig(): AppConfig {
     // Development Authentication Bypass
     dev: {
       bypassAuth: process.env.DEV_BYPASS_AUTH === 'true',
-      oidcIssuer: process.env.DEV_OIDC_ISSUER || 'http://localhost:5000/api/mock-oidc',
       user: {
         id: process.env.DEV_USER_ID || 'dev-user-123',
         email: process.env.DEV_USER_EMAIL || 'dev.user@example.com',
         name: process.env.DEV_USER_NAME || 'Dev User',
-        roles: (process.env.DEV_USER_ROLES || 'user,admin').split(','),
       },
       jwt: {
         expiryMinutes: parseInt(process.env.DEV_JWT_EXPIRY_MINUTES || '60'),
