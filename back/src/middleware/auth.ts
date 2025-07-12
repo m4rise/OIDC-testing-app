@@ -1,31 +1,38 @@
 import { Request, Response, NextFunction } from 'express';
 import { User, UserRole } from '../entities/User';
 
-// Middleware to ensure user is authenticated
-export const requireAuth = (req: Request, res: Response, next: NextFunction): void => {
-  if (req.isAuthenticated() && req.user) {
-    return next();
+// Helper function to check authentication and return user or null (without sending response)
+const checkAuthAndGetUser = (req: Request): User | null => {
+  if (!req.isAuthenticated() || !req.user) {
+    return null;
   }
+  return req.user as User;
+};
 
+// Helper function to send authentication error response
+const sendAuthError = (res: Response): void => {
   res.status(401).json({
     error: 'Authentication required',
     message: 'You must be logged in to access this resource'
   });
 };
 
-// Middleware to ensure user has specific role
+// Middleware to ensure user is authenticated
+export const requireAuth = (req: Request, res: Response, next: NextFunction): void => {
+  const user = checkAuthAndGetUser(req);
+  if (!user) {
+    sendAuthError(res);
+    return;
+  }
+  next();
+};
+
+// Middleware to ensure user has specific role (assumes user is already authenticated)
 export const requireRole = (roles: UserRole | UserRole[]) => {
   return (req: Request, res: Response, next: NextFunction): void => {
-    if (!req.isAuthenticated() || !req.user) {
-      res.status(401).json({
-        error: 'Authentication required',
-        message: 'You must be logged in to access this resource'
-      });
-      return;
-    }
+    const user = req.user as User; // Assumes user is already authenticated
 
     const userRoles = Array.isArray(roles) ? roles : [roles];
-    const user = req.user as User;
 
     if (!userRoles.includes(user.role)) {
       res.status(403).json({
@@ -39,18 +46,10 @@ export const requireRole = (roles: UserRole | UserRole[]) => {
   };
 };
 
-// Middleware to ensure user has specific permission
+// Middleware to ensure user has specific permission (assumes user is already authenticated)
 export const requirePermission = (permission: string) => {
   return (req: Request, res: Response, next: NextFunction): void => {
-    if (!req.isAuthenticated() || !req.user) {
-      res.status(401).json({
-        error: 'Authentication required',
-        message: 'You must be logged in to access this resource'
-      });
-      return;
-    }
-
-    const user = req.user as User;
+    const user = req.user as User; // Assumes user is already authenticated
 
     if (!user.hasPermission(permission)) {
       res.status(403).json({
@@ -64,17 +63,9 @@ export const requirePermission = (permission: string) => {
   };
 };
 
-// Middleware to ensure user account is active
+// Middleware to ensure user account is active (assumes user is already authenticated)
 export const requireActiveAccount = (req: Request, res: Response, next: NextFunction): void => {
-  if (!req.isAuthenticated() || !req.user) {
-    res.status(401).json({
-      error: 'Authentication required',
-      message: 'You must be logged in to access this resource'
-    });
-    return;
-  }
-
-  const user = req.user as User;
+  const user = req.user as User; // Assumes user is already authenticated
 
   if (!user.isActive) {
     res.status(403).json({
@@ -86,3 +77,19 @@ export const requireActiveAccount = (req: Request, res: Response, next: NextFunc
 
   next();
 };
+
+// Convenience middleware combinations for common use cases
+export const requireAuthenticatedUser = [requireAuth];
+export const requireAuthenticatedActiveUser = [requireAuth, requireActiveAccount];
+export const requireAdmin = [requireAuth, requireActiveAccount, requireRole(UserRole.ADMIN)];
+export const requireModerator = [requireAuth, requireActiveAccount, requireRole([UserRole.ADMIN, UserRole.MODERATOR])];
+export const requireActiveUserWithRole = (roles: UserRole | UserRole[]) => [
+  requireAuth,
+  requireActiveAccount,
+  requireRole(roles)
+];
+export const requireActiveUserWithPermission = (permission: string) => [
+  requireAuth,
+  requireActiveAccount,
+  requirePermission(permission)
+];

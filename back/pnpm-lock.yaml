@@ -8,9 +8,6 @@ importers:
 
   .:
     dependencies:
-      '@types/passport':
-        specifier: ^1.0.16
-        version: 1.0.17
       bcryptjs:
         specifier: ^2.4.3
         version: 2.4.3
@@ -96,6 +93,9 @@ importers:
       '@types/node':
         specifier: ^22.10.2
         version: 22.15.33
+      '@types/passport':
+        specifier: ^1.0.16
+        version: 1.0.17
       '@types/pg':
         specifier: ^8.11.10
         version: 8.15.4

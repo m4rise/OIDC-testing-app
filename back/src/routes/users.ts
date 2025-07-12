@@ -1,27 +1,25 @@
 import { Router } from 'express';
 import { UserController } from '../controllers/UserController';
-import { requireAuth, requireRole, requirePermission, requireActiveAccount } from '../middleware/auth';
-import { UserRole } from '../entities/User';
+import { requireAuthenticatedActiveUser, requireAdmin, requireModerator } from '../middleware/auth';
 
 const router: Router = Router();
 const userController = new UserController();
 
 // All user routes require authentication and active account
-router.use(requireAuth);
-router.use(requireActiveAccount);
+router.use(requireAuthenticatedActiveUser);
 
 // User profile routes (accessible to all authenticated users)
 router.get('/profile', userController.getProfile);
 router.put('/profile', userController.updateUser); // Users can update their own profile
 
 // Admin and moderator routes
-router.get('/', requireRole([UserRole.ADMIN, UserRole.MODERATOR]), userController.getUsers);
-router.get('/stats', requireRole(UserRole.ADMIN), userController.getUserStats);
-router.get('/:id', requireRole([UserRole.ADMIN, UserRole.MODERATOR]), userController.getUserById);
+router.get('/', requireModerator, userController.getUsers);
+router.get('/:id', requireModerator, userController.getUserById);
 
 // Admin only routes
-router.post('/', requireRole(UserRole.ADMIN), userController.createUser);
-router.put('/:id', requireRole(UserRole.ADMIN), userController.updateUser);
-router.delete('/:id', requireRole(UserRole.ADMIN), userController.deleteUser);
+router.get('/stats', requireAdmin, userController.getUserStats);
+router.post('/', requireAdmin, userController.createUser);
+router.put('/:id', requireAdmin, userController.updateUser);
+router.delete('/:id', requireAdmin, userController.deleteUser);
 
 export default router;
