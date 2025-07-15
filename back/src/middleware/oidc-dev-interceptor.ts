@@ -300,6 +300,7 @@ export function createOidcDevInterceptor(): express.Router {
     // Handle Basic Authentication (same as MockOidcController)
     let authClientId = client_id;
     let authClientSecret = client_secret;
+    let authMethod = 'client_secret_post'; // Default assumption
 
     if (req.headers.authorization && req.headers.authorization.startsWith('Basic ')) {
       try {
@@ -307,15 +308,23 @@ export function createOidcDevInterceptor(): express.Router {
         const [basicClientId, basicClientSecret] = credentials.split(':');
         authClientId = basicClientId;
         authClientSecret = basicClientSecret;
-        console.log('🔐 Using Basic Authentication credentials');
+        authMethod = 'client_secret_basic';
+        console.log('🔐 DETECTED: client_secret_basic - credentials in Authorization header');
+        console.log('🔐 Authorization header contains Base64 encoded clientId:clientSecret');
       } catch (error) {
         console.error('❌ Invalid Basic Authentication header');
         res.status(400).json({ error: 'invalid_client', error_description: 'Invalid Basic Authentication' });
         return;
       }
+    } else if (client_id && client_secret) {
+      console.log('🔐 DETECTED: client_secret_post - credentials in request body');
+      console.log('🔐 Client credentials sent as form parameters');
+    } else {
+      console.log('❌ No client credentials found in either Authorization header or request body');
     }
 
     // Validate client credentials
+    console.log('🔐 CLIENT AUTHENTICATION METHOD USED:', authMethod.toUpperCase());
     console.log('🔐 Validating client credentials:');
     console.log('  Expected client_id:', devConfig.clientId);
     console.log('  Expected client_secret:', devConfig.clientSecret);

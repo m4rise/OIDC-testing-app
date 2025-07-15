@@ -133,7 +133,7 @@ function getConfig(): AppConfig {
     // Frontend Redirects
     redirects: {
       loginSuccessPath: process.env.LOGIN_SUCCESS_REDIRECT_PATH || '/',
-      loginFailurePath: process.env.LOGIN_FAILURE_REDIRECT_PATH || '/login?error=auth_failed',
+      loginFailurePath: process.env.LOGIN_FAILURE_REDIRECT_PATH || '/?error=auth_failed',
     },
   };
 }

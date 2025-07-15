@@ -1,8 +1,8 @@
-import { Injectable, signal, computed, inject } from '@angular/core';
+import { Injectable, signal, computed, inject, OnDestroy } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { Router } from '@angular/router';
-import { Observable, throwError, of } from 'rxjs';
-import { catchError, tap } from 'rxjs/operators';
+import { Observable, throwError, of, timer, BehaviorSubject, Subject } from 'rxjs';
+import { catchError, tap, takeUntil } from 'rxjs/operators';
 
 import { User, SessionInfo } from '../models/user.model';
 import { environment } from '../../../environments/environment';
@@ -10,7 +10,7 @@ import { environment } from '../../../environments/environment';
 @Injectable({
   providedIn: 'root'
 })
-export class AuthService {
+export class AuthService implements OnDestroy {
   private http = inject(HttpClient);
   private router = inject(Router);
 
@@ -19,6 +19,11 @@ export class AuthService {
   private _isLoading = signal<boolean>(false);
   private _isInitialized = signal<boolean>(false);
   private _initializationPromise: Promise<void> | null = null;
+
+  // Session monitoring
+  private readonly SESSION_CHECK_INTERVAL = 5 * 60 * 1000; // 5 minutes
+  private sessionCheckDestroy$ = new BehaviorSubject<void>(undefined);
+  private destroy$ = new Subject<void>();
 
   // Public readonly signals
   readonly currentUser = this._currentUser.asReadonly();
@@ -29,10 +34,76 @@ export class AuthService {
   readonly isAuthenticated = computed(() => !!this._currentUser());
   readonly userRole = computed(() => this._currentUser()?.role || null);
   readonly userPermissions = computed(() => this._currentUser()?.permissions || []);
+  readonly isAdminUser = computed(() => this.userRole() === 'admin');
+  readonly isModeratorUser = computed(() => ['admin', 'moderator'].includes(this.userRole() ?? ''));
 
   constructor() {
-    // Don't initialize immediately to avoid circular dependency
-    // Manual initialization will be called when needed
+    // No effects or automatic watchers - explicit method calls only
+  }
+
+  /**
+   * Handle unauthenticated user - store current URL for returnTo and redirect to SSO
+   * This should be called explicitly by guards or components when needed
+   */
+  handleUnauthenticatedUser(): void {
+    // Don't redirect if we're already on auth pages
+    const currentUrl = this.router.url;
+    if (currentUrl.startsWith('/auth/')) {
+      return;
+    }
+
+    console.log('AuthService: Handling unauthenticated user, current URL:', currentUrl);
+    this.redirectToSSO(currentUrl);
+  }
+
+  /**
+   * Start session monitoring to check for session expiry
+   */
+  private startSessionMonitoring(): void {
+    this.stopSessionMonitoring(); // Ensure we don't have multiple timers
+
+    timer(this.SESSION_CHECK_INTERVAL, this.SESSION_CHECK_INTERVAL)
+      .pipe(takeUntil(this.sessionCheckDestroy$))
+      .subscribe(() => {
+        this.checkSessionValidity();
+      });
+  }
+
+  /**
+   * Stop session monitoring
+   */
+  private stopSessionMonitoring(): void {
+    this.sessionCheckDestroy$.next();
+  }
+
+  /**
+   * Check if current session is still valid
+   */
+  private checkSessionValidity(): void {
+    this.getSessionInfo().subscribe({
+      next: (sessionInfo) => {
+        if (!sessionInfo?.isAuthenticated) {
+          console.log('AuthService: Session expired during monitoring');
+          this._currentUser.set(null);
+          this.stopSessionMonitoring();
+          // Don't automatically redirect here - let guards handle it
+        }
+      },
+      error: (error) => {
+        console.error('AuthService: Session check failed:', error);
+        this._currentUser.set(null);
+        this.stopSessionMonitoring();
+      }
+    });
+  }
+
+  /**
+   * Redirect to SSO with returnTo parameter
+   */
+  private redirectToSSO(returnTo?: string): void {
+    const targetUrl = returnTo || this.router.url;
+    console.log('AuthService: Redirecting to SSO with returnTo:', targetUrl);
+    this.login(targetUrl);
   }
 
   /**
@@ -71,6 +142,8 @@ export class AuthService {
       if (sessionInfo?.isAuthenticated && sessionInfo.user) {
         this._currentUser.set(sessionInfo.user);
         console.log('AuthService: User authenticated:', sessionInfo.user);
+        // Start session monitoring for authenticated users
+        this.startSessionMonitoring();
       } else {
         console.log('AuthService: No authenticated user found');
       }
@@ -82,6 +155,15 @@ export class AuthService {
       this._initializationPromise = null;
       console.log('AuthService: Initialization complete');
     }
+  }
+
+  /**
+   * Clean up resources when service is destroyed
+   */
+  ngOnDestroy(): void {
+    this.destroy$.next();
+    this.destroy$.complete();
+    this.stopSessionMonitoring();
   }
 
   /**
@@ -120,6 +202,7 @@ export class AuthService {
    */
   logout(): Observable<any> {
     this._isLoading.set(true);
+    this.stopSessionMonitoring();
 
     return this.http.post(`${environment.apiUrl}/auth/logout`, {}).pipe(
       tap((response: any) => {
@@ -162,14 +245,14 @@ export class AuthService {
   /**
    * Check if user has admin access
    */
-  isAdmin(): boolean {
+  hasAdminRole(): boolean {
     return this.hasRole('admin');
   }
 
   /**
    * Check if user has moderator or admin access
    */
-  isModerator(): boolean {
+  hasModeratorRole(): boolean {
     return this.hasRole(['admin', 'moderator']);
   }
 
@@ -183,14 +266,20 @@ export class AuthService {
       tap(sessionInfo => {
         if (sessionInfo?.isAuthenticated && sessionInfo.user) {
           this._currentUser.set(sessionInfo.user);
+          // Start session monitoring if user becomes authenticated
+          if (!this.isAuthenticated()) {
+            this.startSessionMonitoring();
+          }
         } else {
           this._currentUser.set(null);
+          this.stopSessionMonitoring();
         }
         this._isLoading.set(false);
       }),
       catchError(error => {
         this._isLoading.set(false);
         this._currentUser.set(null);
+        this.stopSessionMonitoring();
         return throwError(() => error);
       })
     );

@@ -44,7 +44,7 @@ import { AuthService } from '../../core/services/auth.service';
         </mat-grid-tile>
 
         <!-- Users Management (Admin/Moderator only) -->
-        @if (authService.isModerator()) {
+        @if (authService.isModeratorUser()) {
           <mat-grid-tile>
             <mat-card class="dashboard-card">
               <mat-card-header>
@@ -62,7 +62,7 @@ import { AuthService } from '../../core/services/auth.service';
         }
 
         <!-- Admin Panel (Admin only) -->
-        @if (authService.isAdmin()) {
+        @if (authService.isAdminUser()) {
           <mat-grid-tile>
             <mat-card class="dashboard-card">
               <mat-card-header>

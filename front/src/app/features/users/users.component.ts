@@ -91,7 +91,7 @@ import { User } from '../../core/models/user.model';
               <ng-container matColumnDef="actions">
                 <th mat-header-cell *matHeaderCellDef>Actions</th>
                 <td mat-cell *matCellDef="let user">
-                  @if (authService.isAdmin()) {
+                  @if (authService.isAdminUser()) {
                     <button mat-icon-button (click)="editUser(user)">
                       <mat-icon>edit</mat-icon>
                     </button>

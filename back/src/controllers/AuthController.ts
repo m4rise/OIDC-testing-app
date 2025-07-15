@@ -107,7 +107,8 @@ export class AuthController {
             wasAuthenticated: isAuthenticated
           });
         } else {
-          res.redirect(`${config.frontendUrl}/login?logged_out=true`);
+          // Redirect to homepage since we no longer have a login page
+          res.redirect(`${config.frontendUrl}/?logged_out=true`);
         }
       });
     });

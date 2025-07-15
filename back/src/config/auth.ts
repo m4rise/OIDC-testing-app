@@ -35,6 +35,22 @@ export const configureOIDC = async () => {
       execute: useDevInterceptor ? [client.allowInsecureRequests] : undefined,
     });
 
+    // Log the client configuration to verify authentication method
+    console.log('🔐 OIDC Client Configuration:');
+    console.log('🔐 Client ID:', clientId);
+    console.log('🔐 Issuer URL:', issuerUrl);
+    console.log('🔐 Token Endpoint:', config.serverMetadata().token_endpoint);
+
+    // Check what authentication methods the server supports
+    const serverMetadata = config.serverMetadata();
+    const supportedMethods = serverMetadata.token_endpoint_auth_methods_supported || ['client_secret_basic'];
+    console.log('🔐 Server supported auth methods:', supportedMethods);
+
+    // The actual method used will be determined at runtime
+    // Based on your logs, the client is using 'client_secret_post'
+    console.log('🔐 Note: Actual authentication method will be logged during token exchange');
+    console.log('🔐 Expected: client_secret_post (based on server support and client behavior)');
+
     // Verify function following the passport.ts example
     // Signature is different because passReqToCallback is set to true in the Strategy options
     // This allows us to access req.session directly in the verify function

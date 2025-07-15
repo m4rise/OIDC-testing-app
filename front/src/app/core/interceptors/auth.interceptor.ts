@@ -5,6 +5,7 @@ import { catchError, finalize } from 'rxjs/operators';
 import { throwError } from 'rxjs';
 
 import { LoadingService } from '../services/loading.service';
+import { environment } from '../../../environments/environment';
 
 export const authInterceptor: HttpInterceptorFn = (req, next) => {
   const loadingService = inject(LoadingService);
@@ -25,8 +26,15 @@ export const authInterceptor: HttpInterceptorFn = (req, next) => {
     catchError((error: HttpErrorResponse) => {
       // Handle authentication errors
       if (error.status === 401) {
-        // Redirect to login without calling AuthService to avoid circular dependency
-        router.navigate(['/auth/login']);
+        // Redirect to SSO login directly with returnTo parameter
+        const currentUrl = router.url;
+        const params = new URLSearchParams();
+        if (currentUrl && !currentUrl.startsWith('/auth/')) {
+          params.append('returnTo', currentUrl);
+        }
+
+        const loginUrl = `${environment.apiUrl}/auth/login${params.toString() ? '?' + params.toString() : ''}`;
+        window.location.href = loginUrl;
       }
 
       // Handle authorization errors

@@ -1,14 +1,15 @@
-import { Component, computed, inject, OnInit } from '@angular/core';
-
-import { RouterOutlet, Router } from '@angular/router';
+import { Component, computed, inject, OnInit, signal } from '@angular/core';
+import { RouterOutlet, Router, NavigationEnd } from '@angular/router';
 import { MatToolbarModule } from '@angular/material/toolbar';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatMenuModule } from '@angular/material/menu';
 import { MatProgressBarModule } from '@angular/material/progress-bar';
+import { filter } from 'rxjs/operators';
 
 import { AuthService } from './core/services/auth.service';
 import { LoadingService } from './core/services/loading.service';
+import { environment } from '../environments/environment';
 
 @Component({
   selector: 'app-root',
@@ -23,7 +24,7 @@ import { LoadingService } from './core/services/loading.service';
 ],
   template: `
     <div class="app-container">
-      @if (authService.isAuthenticated()) {
+      @if (shouldShowToolbar()) {
         <mat-toolbar color="primary">
           <span>My App</span>
 
@@ -74,7 +75,7 @@ import { LoadingService } from './core/services/loading.service';
         }
       }
 
-      <main class="main-content">
+      <main class="main-content" [class.full-height]="!shouldShowToolbar()">
         <router-outlet></router-outlet>
       </main>
     </div>
@@ -96,6 +97,10 @@ import { LoadingService } from './core/services/loading.service';
       padding: 16px;
     }
 
+    .main-content.full-height {
+      padding: 0;
+    }
+
     mat-toolbar {
       box-shadow: 0 2px 4px rgba(0,0,0,0.1);
     }
@@ -115,13 +120,34 @@ export class AppComponent implements OnInit {
   authService = inject(AuthService);
   loadingService = inject(LoadingService);
 
+  // Track current route as a signal
+  private _currentRoute = signal('');
+  readonly currentRoute = this._currentRoute.asReadonly();
+
   // Computed signal for admin access
   hasAdminAccess = computed(() => {
     const user = this.authService.currentUser();
     return user?.role === 'admin' || user?.role === 'moderator';
   });
 
+  // Computed signal to determine if toolbar should be shown
+  shouldShowToolbar = computed(() => {
+    const isAuthenticated = this.authService.isAuthenticated();
+    const route = this.currentRoute();
+    const isLandingPage = route === '' || route === '/';
+    const isAuthPage = route.startsWith('/auth/');
+
+    return isAuthenticated && !isLandingPage && !isAuthPage;
+  });
+
   ngOnInit(): void {
+    // Track route changes
+    this.router.events.pipe(
+      filter(event => event instanceof NavigationEnd)
+    ).subscribe((event: NavigationEnd) => {
+      this._currentRoute.set(event.url.split('?')[0]); // Remove query params
+    });
+
     // Initialize auth service after component initialization
     console.log('AppComponent: Initializing auth service...');
     this.authService.initialize().then(() => {
@@ -135,30 +161,16 @@ export class AppComponent implements OnInit {
     try {
       console.log('🚪 Logout button clicked');
 
-      // Subscribe to the logout observable
-      this.authService.logout().subscribe({
-        next: (response) => {
-          console.log('✅ Logout successful:', response);
+      // For logout, we want to let the backend handle the redirect to preserve query parameters
+      // Instead of using the AuthService logout Observable, we'll redirect directly to the backend logout endpoint
+      const logoutUrl = `${environment.apiUrl}/auth/logout`;
+      console.log('🔗 Redirecting to backend logout:', logoutUrl);
+      window.location.href = logoutUrl;
 
-          // Navigate to login page
-          this.router.navigate(['/auth/login']);
-
-          // If there's a logout URL from the backend, redirect there instead
-          if (response.redirectUrl) {
-            console.log('🔗 Redirecting to logout URL:', response.redirectUrl);
-            window.location.href = response.redirectUrl;
-          }
-        },
-        error: (error) => {
-          console.error('❌ Logout error:', error);
-          // Still navigate to login even if logout fails
-          this.router.navigate(['/auth/login']);
-        }
-      });
     } catch (error) {
       console.error('Logout error:', error);
-      // Fallback navigation
-      this.router.navigate(['/auth/login']);
+      // Fallback navigation to homepage
+      this.router.navigate(['/']);
     }
   }
 }

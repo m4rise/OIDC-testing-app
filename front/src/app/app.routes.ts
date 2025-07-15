@@ -1,26 +1,11 @@
 import { Routes } from '@angular/router';
 import { authGuard } from './core/guards/auth.guard';
-import { noAuthGuard } from './core/guards/no-auth.guard';
+import { moderatorGuard, adminGuard } from './core/guards/role.guard';
 
 export const routes: Routes = [
   {
     path: '',
-    redirectTo: '/dashboard',
-    pathMatch: 'full'
-  },
-  {
-    path: 'auth',
-    canActivate: [noAuthGuard],
-    children: [
-      {
-        path: 'login',
-        loadComponent: () => import('./features/auth/login/login.component').then(m => m.LoginComponent)
-      },
-      {
-        path: 'callback',
-        loadComponent: () => import('./features/auth/callback/callback.component').then(m => m.CallbackComponent)
-      }
-    ]
+    loadComponent: () => import('./features/landing/landing.component').then(m => m.LandingComponent)
   },
   {
     path: 'dashboard',
@@ -34,15 +19,13 @@ export const routes: Routes = [
   },
   {
     path: 'users',
-    canActivate: [authGuard],
-    loadComponent: () => import('./features/users/users.component').then(m => m.UsersComponent),
-    data: { roles: ['admin', 'moderator'] }
+    canActivate: [moderatorGuard],
+    loadComponent: () => import('./features/users/users.component').then(m => m.UsersComponent)
   },
   {
     path: 'admin',
-    canActivate: [authGuard],
-    loadComponent: () => import('./features/admin/admin.component').then(m => m.AdminComponent),
-    data: { roles: ['admin'] }
+    canActivate: [adminGuard],
+    loadComponent: () => import('./features/admin/admin.component').then(m => m.AdminComponent)
   },
   {
     path: '**',
