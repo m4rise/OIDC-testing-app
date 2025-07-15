@@ -1,7 +1,7 @@
 import { Injectable, signal, computed, inject, OnDestroy } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { Router } from '@angular/router';
-import { Observable, throwError, of, Subject } from 'rxjs';
+import { Observable, throwError, of, Subject, firstValueFrom } from 'rxjs';
 import { catchError, tap } from 'rxjs/operators';
 
 import { User, SessionInfo } from '../models/user.model';
@@ -93,7 +93,7 @@ export class AuthService implements OnDestroy {
     console.log('AuthService: Initializing authentication...');
 
     try {
-      const sessionInfo = await this.getSessionInfo().toPromise();
+      const sessionInfo = await firstValueFrom(this.getSessionInfo());
       console.log('AuthService: Session info received:', sessionInfo);
 
       if (sessionInfo?.isAuthenticated && sessionInfo.user) {

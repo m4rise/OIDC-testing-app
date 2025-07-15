@@ -1,4 +1,4 @@
-import { ApplicationConfig, importProvidersFrom, APP_INITIALIZER } from '@angular/core';
+import { ApplicationConfig, importProvidersFrom, provideAppInitializer, inject } from '@angular/core';
 import { provideRouter } from '@angular/router';
 import { provideAnimationsAsync } from '@angular/platform-browser/animations/async';
 import { provideHttpClient, withInterceptors } from '@angular/common/http';
@@ -8,11 +8,6 @@ import { routes } from './app.routes';
 import { authInterceptor } from './core/interceptors/auth.interceptor';
 import { AuthService } from './core/services/auth.service';
 
-// App initializer factory to initialize auth service
-export function initializeAuth(authService: AuthService) {
-  return () => authService.initialize();
-}
-
 export const appConfig: ApplicationConfig = {
   providers: [
     provideRouter(routes),
@@ -21,11 +16,10 @@ export const appConfig: ApplicationConfig = {
       withInterceptors([authInterceptor])
     ),
     importProvidersFrom(BrowserAnimationsModule),
-    {
-      provide: APP_INITIALIZER,
-      useFactory: initializeAuth,
-      deps: [AuthService],
-      multi: true
-    }
+    // Modern app initializer using provideAppInitializer
+    provideAppInitializer(() => {
+      const authService = inject(AuthService);
+      return authService.initialize();
+    })
   ]
 };
