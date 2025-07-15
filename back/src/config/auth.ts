@@ -157,7 +157,14 @@ passport.serializeUser((user: any, cb) => {
 passport.deserializeUser(async (id: string, cb) => {
   try {
     const userRepository = AppDataSource.getRepository(User);
-    const user = await userRepository.findOne({ where: { id } });
+    const userData = await userRepository.findOne({ where: { id } });
+
+    if (!userData) {
+      return cb(null, null);
+    }
+
+    // Create a proper User instance with methods
+    const user = userRepository.create(userData);
     return cb(null, user);
   } catch (error) {
     console.error('❌ Error in deserializeUser:', error);

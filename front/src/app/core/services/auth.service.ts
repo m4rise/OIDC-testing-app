@@ -1,8 +1,8 @@
 import { Injectable, signal, computed, inject, OnDestroy } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { Router } from '@angular/router';
-import { Observable, throwError, of, timer, BehaviorSubject, Subject } from 'rxjs';
-import { catchError, tap, takeUntil } from 'rxjs/operators';
+import { Observable, throwError, of, Subject } from 'rxjs';
+import { catchError, tap } from 'rxjs/operators';
 
 import { User, SessionInfo } from '../models/user.model';
 import { environment } from '../../../environments/environment';
@@ -20,9 +20,7 @@ export class AuthService implements OnDestroy {
   private _isInitialized = signal<boolean>(false);
   private _initializationPromise: Promise<void> | null = null;
 
-  // Session monitoring
-  private readonly SESSION_CHECK_INTERVAL = 5 * 60 * 1000; // 5 minutes
-  private sessionCheckDestroy$ = new BehaviorSubject<void>(undefined);
+  // Clean up resources
   private destroy$ = new Subject<void>();
 
   // Public readonly signals
@@ -54,47 +52,6 @@ export class AuthService implements OnDestroy {
 
     console.log('AuthService: Handling unauthenticated user, current URL:', currentUrl);
     this.redirectToSSO(currentUrl);
-  }
-
-  /**
-   * Start session monitoring to check for session expiry
-   */
-  private startSessionMonitoring(): void {
-    this.stopSessionMonitoring(); // Ensure we don't have multiple timers
-
-    timer(this.SESSION_CHECK_INTERVAL, this.SESSION_CHECK_INTERVAL)
-      .pipe(takeUntil(this.sessionCheckDestroy$))
-      .subscribe(() => {
-        this.checkSessionValidity();
-      });
-  }
-
-  /**
-   * Stop session monitoring
-   */
-  private stopSessionMonitoring(): void {
-    this.sessionCheckDestroy$.next();
-  }
-
-  /**
-   * Check if current session is still valid
-   */
-  private checkSessionValidity(): void {
-    this.getSessionInfo().subscribe({
-      next: (sessionInfo) => {
-        if (!sessionInfo?.isAuthenticated) {
-          console.log('AuthService: Session expired during monitoring');
-          this._currentUser.set(null);
-          this.stopSessionMonitoring();
-          // Don't automatically redirect here - let guards handle it
-        }
-      },
-      error: (error) => {
-        console.error('AuthService: Session check failed:', error);
-        this._currentUser.set(null);
-        this.stopSessionMonitoring();
-      }
-    });
   }
 
   /**
@@ -142,8 +99,6 @@ export class AuthService implements OnDestroy {
       if (sessionInfo?.isAuthenticated && sessionInfo.user) {
         this._currentUser.set(sessionInfo.user);
         console.log('AuthService: User authenticated:', sessionInfo.user);
-        // Start session monitoring for authenticated users
-        this.startSessionMonitoring();
       } else {
         console.log('AuthService: No authenticated user found');
       }
@@ -163,7 +118,6 @@ export class AuthService implements OnDestroy {
   ngOnDestroy(): void {
     this.destroy$.next();
     this.destroy$.complete();
-    this.stopSessionMonitoring();
   }
 
   /**
@@ -202,7 +156,6 @@ export class AuthService implements OnDestroy {
    */
   logout(): Observable<any> {
     this._isLoading.set(true);
-    this.stopSessionMonitoring();
 
     return this.http.post(`${environment.apiUrl}/auth/logout`, {}).pipe(
       tap((response: any) => {
@@ -266,20 +219,14 @@ export class AuthService implements OnDestroy {
       tap(sessionInfo => {
         if (sessionInfo?.isAuthenticated && sessionInfo.user) {
           this._currentUser.set(sessionInfo.user);
-          // Start session monitoring if user becomes authenticated
-          if (!this.isAuthenticated()) {
-            this.startSessionMonitoring();
-          }
         } else {
           this._currentUser.set(null);
-          this.stopSessionMonitoring();
         }
         this._isLoading.set(false);
       }),
       catchError(error => {
         this._isLoading.set(false);
         this._currentUser.set(null);
-        this.stopSessionMonitoring();
         return throwError(() => error);
       })
     );

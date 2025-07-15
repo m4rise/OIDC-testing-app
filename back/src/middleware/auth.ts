@@ -49,7 +49,7 @@ export const requireRole = (roles: UserRole | UserRole[]) => {
 // Middleware to ensure user has specific permission (assumes user is already authenticated)
 export const requirePermission = (permission: string) => {
   return (req: Request, res: Response, next: NextFunction): void => {
-    const user = req.user as User; // Assumes user is already authenticated
+    const user = req.user as User; // User instance with hasPermission() method
 
     if (!user.hasPermission(permission)) {
       res.status(403).json({
