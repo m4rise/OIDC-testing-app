@@ -168,7 +168,7 @@ export function createOidcDevInterceptor(): express.Router {
 
     const discoveryDoc = {
       issuer: baseUrl,
-      authorization_endpoint: `${baseUrl}/auth`,
+      authorization_endpoint: `${baseUrl}/authorization`,
       token_endpoint: `${baseUrl}/token`,
       userinfo_endpoint: `${baseUrl}/userinfo`,
       jwks_uri: `${baseUrl}/.well-known/jwks.json`,
@@ -202,7 +202,7 @@ export function createOidcDevInterceptor(): express.Router {
   });
 
   // Authorization endpoint (redirects to callback with mock code)
-  router.get(`${basePath}/auth`, (req: express.Request, res: express.Response): void => {
+  router.get(`${basePath}/authorization`, (req: express.Request, res: express.Response): void => {
     logRequest(req);
     console.log('🔐 Dev interceptor: authorization endpoint called');
     console.log('Query params:', req.query);

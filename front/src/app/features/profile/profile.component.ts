@@ -87,11 +87,15 @@ import { UserService } from '../../core/services/user.service';
                   type="submit"
                   [disabled]="profileForm.invalid || isLoading()">
                   @if (isLoading()) {
-                    <mat-icon>hourglass_empty</mat-icon>
-                    Updating...
+                    <ng-container>
+                      <mat-icon>hourglass_empty</mat-icon>
+                      Updating...
+                    </ng-container>
                   } @else {
-                    <mat-icon>save</mat-icon>
-                    Save Changes
+                    <ng-container>
+                      <mat-icon>save</mat-icon>
+                      Save Changes
+                    </ng-container>
                   }
                 </button>
 
