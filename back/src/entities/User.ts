@@ -5,7 +5,10 @@ import {
   CreateDateColumn,
   UpdateDateColumn,
   Index,
+  ManyToMany,
+  JoinTable,
 } from 'typeorm';
+import { Role } from './Role';
 
 export enum UserRole {
   ADMIN = 'admin',
@@ -32,12 +35,23 @@ export class User {
   @Column()
   lastName: string;
 
+  // Keep old role column for backward compatibility during migration
   @Column({
     type: 'enum',
     enum: UserRole,
     default: UserRole.USER,
+    nullable: true,
   })
-  role: UserRole;
+  role?: UserRole;
+
+  // New many-to-many relationship with roles
+  @ManyToMany(() => Role, (role: Role) => role.users, { eager: true })
+  @JoinTable({
+    name: 'user_roles',
+    joinColumn: { name: 'userId', referencedColumnName: 'id' },
+    inverseJoinColumn: { name: 'roleId', referencedColumnName: 'id' }
+  })
+  roles: Role[];
 
   @Column({ default: true })
   isActive: boolean;
@@ -56,16 +70,38 @@ export class User {
     return `${this.firstName} ${this.lastName}`;
   }
 
-  // Method to check if user has permission
-  hasPermission(permission: string): boolean {
-    const rolePermissions = {
-      [UserRole.ADMIN]: ['read', 'write', 'delete', 'admin'],
-      [UserRole.MODERATOR]: ['read', 'write', 'moderate'],
-      [UserRole.USER]: ['read'],
-    };
+  // Current role (single role business logic)
+  get currentRole(): Role | null {
+    if (!this.roles || this.roles.length === 0) return null;
+    return this.roles[0] || null; // For now, just return the first role
+  }
 
-    const userPermissions = rolePermissions[this.role] || [];
-    return userPermissions.includes(permission);
+  get currentRoleName(): string | null {
+    return this.currentRole?.name || null;
+  }
+
+  // All permissions from roles
+  get allPermissions(): any[] {
+    if (!this.roles) return [];
+    return this.roles
+      .filter(role => role.isActive)
+      .flatMap(role => role.permissions || [])
+      .filter(permission => permission.isActive);
+  }
+
+  // Check if user has a specific permission
+  hasPermission(requiredPermission: string): boolean {
+    return this.allPermissions.some(permission => permission.matches(requiredPermission));
+  }
+
+  // Check if user has a specific role
+  hasRole(roleName: string): boolean {
+    return this.roles?.some(role => role.name === roleName) || false;
+  }
+
+  // Assign single role (current business logic)
+  assignRole(role: Role): void {
+    this.roles = [role];
   }
 
   // Get profile freshness info (based on last login)

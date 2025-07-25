@@ -9,7 +9,7 @@ import { MatChipsModule } from '@angular/material/chips';
 import { MatSnackBarModule, MatSnackBar } from '@angular/material/snack-bar';
 
 import { UserService } from '../../core/services/user.service';
-import { AuthService } from '../../core/services/auth.service';
+import { PermissionService } from '../../core/services/permission.service';
 import { User } from '../../core/models/user.model';
 
 @Component({
@@ -63,7 +63,7 @@ import { User } from '../../core/models/user.model';
               <ng-container matColumnDef="role">
                 <th mat-header-cell *matHeaderCellDef>Role</th>
                 <td mat-cell *matCellDef="let user">
-                  <mat-chip [class]="'role-chip-' + user.role">
+                  <mat-chip [class]="'role-chip-' + user.currentRole">
                     {{ user.role | titlecase }}
                   </mat-chip>
                 </td>
@@ -91,18 +91,19 @@ import { User } from '../../core/models/user.model';
               <ng-container matColumnDef="actions">
                 <th mat-header-cell *matHeaderCellDef>Actions</th>
                 <td mat-cell *matCellDef="let user">
-                  @if (authService.isAdminUser()) {
+                  @if (permissionService.canEditUser()) {
                     <button mat-icon-button (click)="editUser(user)">
                       <mat-icon>edit</mat-icon>
                     </button>
+                  }
+                  @if (permissionService.canDeleteUser()) {
                     <button mat-icon-button (click)="deleteUser(user)" color="warn">
                       <mat-icon>delete</mat-icon>
                     </button>
-                  } @else {
-                    <button mat-icon-button (click)="viewUser(user)">
-                      <mat-icon>visibility</mat-icon>
-                    </button>
                   }
+                  <button mat-icon-button (click)="viewUser(user)">
+                    <mat-icon>visibility</mat-icon>
+                  </button>
                 </td>
               </ng-container>
 
@@ -200,8 +201,7 @@ import { User } from '../../core/models/user.model';
 export class UsersComponent {
   private userService = inject(UserService);
   private snackBar = inject(MatSnackBar);
-
-  authService = inject(AuthService);
+  protected permissionService = inject(PermissionService);
 
   // Signals
   users = signal<User[]>([]);

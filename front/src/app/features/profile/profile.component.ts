@@ -74,8 +74,8 @@ import { UserService } from '../../core/services/user.service';
 
               <div class="form-row">
                 <mat-form-field appearance="outline" class="full-width">
-                  <mat-label>Role</mat-label>
-                  <input matInput [value]="authService.currentUser()?.role | titlecase" readonly>
+                  <mat-label>Roles</mat-label>
+                  <input matInput [value]="authService.currentUser()?.roles?.join(', ') | titlecase" readonly>
                   <mat-icon matSuffix>security</mat-icon>
                 </mat-form-field>
               </div>

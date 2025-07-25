@@ -112,8 +112,8 @@ import { AuthService } from '../../core/services/auth.service';
               </div>
               <div class="detail-item">
                 <strong>Role:</strong>
-                <span class="role-badge role-{{ currentUser()?.role }}">
-                  {{ currentUser()?.role | titlecase }}
+                <span class="role-badge role-{{ currentUser()?.currentRole }}">
+                  {{ currentUser()?.currentRole | titlecase }}
                 </span>
               </div>
               <div class="detail-item">

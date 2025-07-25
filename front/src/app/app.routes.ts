@@ -1,6 +1,6 @@
 import { Routes } from '@angular/router';
 import { authGuard } from './core/guards/auth.guard';
-import { moderatorGuard, adminGuard } from './core/guards/role.guard';
+import { canReadUsers, canAccessAdmin } from './core/guards/permission.guard';
 
 export const routes: Routes = [
   {
@@ -19,12 +19,12 @@ export const routes: Routes = [
   },
   {
     path: 'users',
-    canActivate: [moderatorGuard],
+    canActivate: [canReadUsers], // Permission-based guard
     loadComponent: () => import('./features/users/users.component').then(m => m.UsersComponent)
   },
   {
     path: 'admin',
-    canActivate: [adminGuard],
+    canActivate: [canAccessAdmin], // Permission-based guard
     loadComponent: () => import('./features/admin/admin.component').then(m => m.AdminComponent)
   },
   {

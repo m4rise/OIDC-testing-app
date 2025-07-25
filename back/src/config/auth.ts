@@ -157,15 +157,59 @@ passport.serializeUser((user: any, cb) => {
 passport.deserializeUser(async (id: string, cb) => {
   try {
     const userRepository = AppDataSource.getRepository(User);
-    const userData = await userRepository.findOne({ where: { id } });
+    const userData = await userRepository.findOne({
+      where: { id },
+      select: {
+        id: true,
+        nni: true,
+        email: true,
+        firstName: true,
+        lastName: true,
+        role: true,
+        isActive: true,
+        createdAt: true,
+        lastLoginAt: true,
+        updatedAt: true
+      },
+      relations: {
+        roles: {
+          permissions: true
+        }
+      }
+    });
 
     if (!userData) {
       return cb(null, null);
     }
 
-    // Create a proper User instance with methods
-    const user = userRepository.create(userData);
-    return cb(null, user);
+    // Extract only the permission and role names efficiently
+    const roles = userData.roles?.map(role => role.name) || [];
+    const permissions = userData.roles?.flatMap(role =>
+      role.permissions?.map(permission => permission.name) || []
+    ) || [];
+
+    // Remove duplicates from permissions
+    const uniquePermissions = [...new Set(permissions)];
+
+    // Return optimized user object
+    const optimizedUser = {
+      id: userData.id,
+      nni: userData.nni,
+      email: userData.email,
+      firstName: userData.firstName,
+      lastName: userData.lastName,
+      fullName: `${userData.firstName} ${userData.lastName}`,
+      role: userData.role,
+      roles,
+      currentRole: roles[0] || '', // Use first role as current role
+      permissions: uniquePermissions,
+      isActive: userData.isActive,
+      createdAt: userData.createdAt,
+      lastLoginAt: userData.lastLoginAt,
+      updatedAt: userData.updatedAt
+    };
+
+    return cb(null, optimizedUser as any);
   } catch (error) {
     console.error('❌ Error in deserializeUser:', error);
     return cb(error, null);

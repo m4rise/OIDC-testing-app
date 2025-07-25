@@ -30,10 +30,11 @@ export class AuthService implements OnDestroy {
 
   // Computed signals
   readonly isAuthenticated = computed(() => !!this._currentUser());
-  readonly userRole = computed(() => this._currentUser()?.role || null);
+  readonly userRoles = computed(() => this._currentUser()?.roles || []);
+  readonly currentRole = computed(() => this._currentUser()?.currentRole || null);
   readonly userPermissions = computed(() => this._currentUser()?.permissions || []);
-  readonly isAdminUser = computed(() => this.userRole() === 'admin');
-  readonly isModeratorUser = computed(() => ['admin', 'moderator'].includes(this.userRole() ?? ''));
+  readonly isAdminUser = computed(() => this.hasRole('admin'));
+  readonly isModeratorUser = computed(() => this.hasRole('admin') || this.hasRole('moderator'));
 
   constructor() {
     // No effects or automatic watchers - explicit method calls only
@@ -177,22 +178,42 @@ export class AuthService implements OnDestroy {
   }
 
   /**
-   * Check if user has specific permission
+   * Check if user has specific permission (with wildcard support)
    */
   hasPermission(permission: string): boolean {
-    const permissions = this.userPermissions();
-    return permissions.includes(permission);
+    const userPermissions = this.userPermissions();
+    return userPermissions.some(userPerm => this.matchesPermission(userPerm, permission));
   }
 
   /**
    * Check if user has any of the specified roles
    */
   hasRole(roles: string | string[]): boolean {
-    const userRole = this.userRole();
-    if (!userRole) return false;
+    const userRoles = this.userRoles();
+    if (!userRoles.length) return false;
 
     const roleArray = Array.isArray(roles) ? roles : [roles];
-    return roleArray.includes(userRole);
+    return roleArray.some(role => userRoles.includes(role));
+  }
+
+  /**
+   * Check if user permission matches required permission (with wildcard support)
+   */
+  private matchesPermission(userPermission: string, requiredPermission: string): boolean {
+    const userParts = userPermission.split(':');
+    const reqParts = requiredPermission.split(':');
+
+    // Shorter permissions cover longer ones: "api:user" covers "api:user:read:self"
+    if (userParts.length <= reqParts.length) {
+      for (let i = 0; i < userParts.length; i++) {
+        if (userParts[i] !== reqParts[i] && userParts[i] !== '*') {
+          return false;
+        }
+      }
+      return true;
+    }
+
+    return false;
   }
 
   /**

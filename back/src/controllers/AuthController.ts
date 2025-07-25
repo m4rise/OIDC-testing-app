@@ -25,7 +25,7 @@ export class AuthController {
 
   // Handle OIDC callback using standard passport authenticate with proper callback
   callback = (req: Request, res: Response, next: Function) => {
-    return passport.authenticate('oidc', (err: any, user: any, info: any) => {
+    return passport.authenticate('oidc', async (err: any, user: any, info: any) => {
       if (err) {
         console.error('❌ Authentication error:', err);
         return res.redirect(this.getFailureRedirect());
@@ -53,15 +53,18 @@ export class AuthController {
         }
 
         const successUrl = this.getSuccessRedirect(req);
+        console.log('✅ Login successful, redirecting to:', successUrl);
         return res.redirect(successUrl);
       });
     })(req, res, next);
   };
 
-  // Get current session info
-  getSession = async (req: Request, res: Response) => {
+  // Get current session info with user permissions (consolidated endpoint)
+  getSession = async (req: Request, res: Response): Promise<void> => {
     try {
       const sessionInfo = await this.authService.getSessionInfo(req);
+
+      // Return sessionInfo directly without redundant rbac object
       res.json(sessionInfo);
     } catch (error) {
       console.error('Session info error:', error);
@@ -115,12 +118,11 @@ export class AuthController {
   };
 
   // Debug endpoint to check session contents
-  getSessionDebug = async (req: Request, res: Response) => {
+  getSessionDebug = async (req: Request, res: Response): Promise<void> => {
     try {
-      const isAuthenticated = !!(req.session as any)?.passport?.user || !!req.user;
       const sessionData = {
         sessionId: req.sessionID,
-        isAuthenticated,
+        isAuthenticated: req.isAuthenticated(),
         user: req.user ?? null,
         sessionKeys: Object.keys(req.session),
         rawSession: config.isDevelopment ? req.session : 'hidden_in_production'

@@ -127,7 +127,7 @@ export class AppComponent implements OnInit {
   // Computed signal for admin access
   hasAdminAccess = computed(() => {
     const user = this.authService.currentUser();
-    return user?.role === 'admin' || user?.role === 'moderator';
+    return user?.roles?.includes('admin') || user?.roles?.includes('moderator');
   });
 
   // Computed signal to determine if toolbar should be shown

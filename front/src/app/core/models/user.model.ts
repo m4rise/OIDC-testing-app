@@ -5,9 +5,10 @@ export interface User {
   firstName: string;
   lastName: string;
   fullName: string;
-  role: UserRole;
+  roles: string[]; // RBAC roles array
+  currentRole: string; // Current active role
+  permissions: string[]; // Flattened permissions from all roles
   isActive: boolean;
-  permissions: string[];
   createdAt: string;
   lastLoginAt?: string;
 }
@@ -15,8 +16,10 @@ export interface User {
 export interface SessionInfo {
   user: User;
   isAuthenticated: boolean;
+  totalPermissions?: number;
 }
 
+// For backward compatibility in some places
 export type UserRole = 'admin' | 'moderator' | 'user';
 
 export interface ApiResponse<T = any> {
@@ -38,12 +41,12 @@ export interface CreateUserDto {
   email: string;
   firstName: string;
   lastName: string;
-  role?: UserRole;
+  role?: string; // Now accepts role name
 }
 
 export interface UpdateUserDto {
   firstName?: string;
   lastName?: string;
-  role?: UserRole;
+  role?: string; // Now accepts role name
   isActive?: boolean;
 }

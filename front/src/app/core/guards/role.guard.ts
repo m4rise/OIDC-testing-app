@@ -49,9 +49,3 @@ function checkRoleAccess(
 
   return true;
 }
-
-/**
- * Predefined role guards for common use cases
- */
-export const adminGuard: CanActivateFn = createRoleGuard(['admin']);
-export const moderatorGuard: CanActivateFn = createRoleGuard(['admin', 'moderator']);
