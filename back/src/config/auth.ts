@@ -1,6 +1,7 @@
 import passport from 'passport';
 import { AppDataSource } from '../data-source';
-import { User, UserRole } from '../entities/User';
+import { User } from '../entities/User';
+import { Role } from '../entities/Role';
 import { config as appConfig } from './environment';
 
 // Configure OIDC Strategy using standard openid-client/passport
@@ -65,22 +66,35 @@ export const configureOIDC = async () => {
 
         // Find or create user using UserRepository directly
         const userRepository = AppDataSource.getRepository(User);
+        const roleRepository = AppDataSource.getRepository(Role);
         let user = await userRepository.findOne({ where: { nni: claims.sub } });
 
         if (!user) {
+          // Get the appropriate default role
+          const defaultRoleName = appConfig.isProduction ? 'user' : 'admin';
+          const defaultRole = await roleRepository.findOne({ where: { name: defaultRoleName } });
+
+          if (!defaultRole) {
+            throw new Error(`Default role '${defaultRoleName}' not found. Please run RBAC seed.`);
+          }
+
           // Create new user
           const userData = {
             nni: claims.sub, // Use OIDC sub as stable identifier
             email: claims.email,
             firstName: claims.given_name || claims.name?.split(' ')[0] || 'Unknown',
             lastName: claims.family_name || claims.name?.split(' ').slice(1).join(' ') || 'User',
-            role: appConfig.isProduction ? UserRole.USER : UserRole.ADMIN, // Default to USER in production, ADMIN in development
             isActive: true,
             lastLoginAt: jwtIat
           };
           user = userRepository.create(userData);
           user = await userRepository.save(user);
-          console.log('🔒 Created new user from OIDC:', user.email);
+
+          // Assign the role using the new RBAC system
+          user.assignRole(defaultRole);
+          await userRepository.save(user);
+
+          console.log(`🔒 Created new user from OIDC: ${user.email} with role: ${defaultRole.name}`);
         } else {
           // Update last login with JWT iat timestamp
           user.lastLoginAt = jwtIat;
@@ -91,7 +105,7 @@ export const configureOIDC = async () => {
         // Store JWT expiry temporarily on user object for AuthController to access
         // This is a temporary property that won't be persisted to database
         if (jwtExp) {
-          (user as any).tempJwtExpiry = jwtExp.getTime();
+          (user as User & { tempJwtExpiry?: number }).tempJwtExpiry = jwtExp.getTime();
           console.log('🔒 Attached JWT expiry to user object:', jwtExp.toISOString());
         } else {
           console.log('🔒 JWT exp claim not found, will fallback to lastLoginAt + default lifetime');
@@ -165,7 +179,6 @@ passport.deserializeUser(async (id: string, cb) => {
         email: true,
         firstName: true,
         lastName: true,
-        role: true,
         isActive: true,
         createdAt: true,
         lastLoginAt: true,
@@ -199,7 +212,6 @@ passport.deserializeUser(async (id: string, cb) => {
       firstName: userData.firstName,
       lastName: userData.lastName,
       fullName: `${userData.firstName} ${userData.lastName}`,
-      role: userData.role,
       roles,
       currentRole: roles[0] || '', // Use first role as current role
       permissions: uniquePermissions,
@@ -209,7 +221,7 @@ passport.deserializeUser(async (id: string, cb) => {
       updatedAt: userData.updatedAt
     };
 
-    return cb(null, optimizedUser as any);
+    return cb(null, optimizedUser);
   } catch (error) {
     console.error('❌ Error in deserializeUser:', error);
     return cb(error, null);

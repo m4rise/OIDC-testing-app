@@ -26,22 +26,4 @@ export class Permission {
 
   @ManyToMany(() => Role, (role: Role) => role.permissions)
   roles: Role[];
-
-  // Helper method for matching permissions
-  matches(requiredPermission: string): boolean {
-    const thisParts = this.name.split(':');
-    const reqParts = requiredPermission.split(':');
-
-    // Shorter permissions cover longer ones: "api:user" covers "api:user:read:self"
-    if (thisParts.length <= reqParts.length) {
-      for (let i = 0; i < thisParts.length; i++) {
-        if (thisParts[i] !== reqParts[i] && thisParts[i] !== '*') {
-          return false;
-        }
-      }
-      return true;
-    }
-
-    return false;
-  }
 }

@@ -41,7 +41,7 @@ export class AuthService {
       };
     }
 
-    const user = req.user as any; // The lightweight user object from deserializeUser
+    const user = req.user!; // The lightweight user object from deserializeUser
 
     return {
       user: {

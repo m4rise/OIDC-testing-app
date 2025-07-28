@@ -1,6 +1,5 @@
 import { Request, Response } from 'express';
 import { UserService, CreateUserDto, UpdateUserDto } from '../services/UserService';
-import { UserRole } from '../entities/User';
 
 export class UserController {
   private userService: UserService;
@@ -12,12 +11,8 @@ export class UserController {
   // Get current user profile
   getProfile = async (req: Request, res: Response): Promise<void> => {
     try {
-      if (!req.user) {
-        res.status(401).json({ error: 'Not authenticated' });
-        return;
-      }
-
-      const user = await this.userService.getUserById((req.user as any).id);
+      // Middleware ensures req.user exists, so we can safely use it
+      const user = await this.userService.getUserById(req.user!.id);
       if (!user) {
         res.status(404).json({ error: 'User not found' });
         return;
@@ -30,7 +25,8 @@ export class UserController {
         firstName: user.firstName,
         lastName: user.lastName,
         fullName: user.fullName,
-        role: user.role,
+        currentRole: user.currentRole,
+        roles: user.roles,
         isActive: user.isActive,
         createdAt: user.createdAt,
         lastLoginAt: user.lastLoginAt,
@@ -46,13 +42,11 @@ export class UserController {
     try {
       const page = parseInt(req.query.page as string) || 1;
       const limit = parseInt(req.query.limit as string) || 10;
-      const role = req.query.role as UserRole;
       const isActive = req.query.isActive ? req.query.isActive === 'true' : undefined;
 
       const result = await this.userService.getUsers({
         page,
         limit,
-        role,
         isActive,
       });
 
@@ -87,7 +81,8 @@ export class UserController {
         firstName: user.firstName,
         lastName: user.lastName,
         fullName: user.fullName,
-        role: user.role,
+        currentRole: user.currentRole,
+        roles: user.roles,
         isActive: user.isActive,
         createdAt: user.createdAt,
         updatedAt: user.updatedAt,
@@ -106,7 +101,6 @@ export class UserController {
         email: req.body.email,
         firstName: req.body.firstName,
         lastName: req.body.lastName,
-        role: req.body.role || UserRole.USER,
       };
 
       const user = await this.userService.createUser(userData);
@@ -117,7 +111,8 @@ export class UserController {
         firstName: user.firstName,
         lastName: user.lastName,
         fullName: user.fullName,
-        role: user.role,
+        currentRole: user.currentRole,
+        roles: user.roles,
         isActive: user.isActive,
         createdAt: user.createdAt,
       });
@@ -137,15 +132,15 @@ export class UserController {
   updateUser = async (req: Request, res: Response): Promise<void> => {
     try {
       const { id } = req.params;
-      const currentUser = req.user as any;
+      const currentUser = req.user!; // Safe because middleware ensures authentication
 
       if (!id) {
         res.status(400).json({ error: 'User ID is required' });
         return;
       }
 
-      // Check if user is updating their own profile or is admin
-      if (currentUser.id !== id && currentUser.role !== UserRole.ADMIN) {
+      // Check if user is updating their own profile or has admin permissions
+      if (currentUser.id !== id && !currentUser.permissions.includes('api:user:write:*')) {
         res.status(403).json({ error: 'Insufficient permissions' });
         return;
       }
@@ -155,9 +150,8 @@ export class UserController {
       if (req.body.firstName !== undefined) updateData.firstName = req.body.firstName;
       if (req.body.lastName !== undefined) updateData.lastName = req.body.lastName;
 
-      // Only admins can change role and active status
-      if (currentUser.role === UserRole.ADMIN) {
-        if (req.body.role !== undefined) updateData.role = req.body.role;
+      // Only users with admin permissions can change active status
+      if (currentUser.permissions.includes('api:user:write:*')) {
         if (req.body.isActive !== undefined) updateData.isActive = req.body.isActive;
       }
 
@@ -169,7 +163,8 @@ export class UserController {
         firstName: user.firstName,
         lastName: user.lastName,
         fullName: user.fullName,
-        role: user.role,
+        currentRole: user.currentRole,
+        roles: user.roles,
         isActive: user.isActive,
         updatedAt: user.updatedAt,
       });
@@ -189,7 +184,7 @@ export class UserController {
   deleteUser = async (req: Request, res: Response): Promise<void> => {
     try {
       const { id } = req.params;
-      const currentUser = req.user as any;
+      const currentUser = req.user!; // Safe because middleware ensures authentication
 
       if (!id) {
         res.status(400).json({ error: 'User ID is required' });

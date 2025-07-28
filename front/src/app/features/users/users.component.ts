@@ -64,7 +64,7 @@ import { User } from '../../core/models/user.model';
                 <th mat-header-cell *matHeaderCellDef>Role</th>
                 <td mat-cell *matCellDef="let user">
                   <mat-chip [class]="'role-chip-' + user.currentRole">
-                    {{ user.role | titlecase }}
+                    {{ user.currentRole | titlecase }}
                   </mat-chip>
                 </td>
               </ng-container>

@@ -1,6 +1,6 @@
 import { Repository } from 'typeorm';
 import { AppDataSource } from '../data-source';
-import { User, UserRole } from '../entities/User';
+import { User } from '../entities/User';
 
 export class UserRepository {
   private repository: Repository<User>;
@@ -24,14 +24,9 @@ export class UserRepository {
   async findAll(options?: {
     skip?: number;
     take?: number;
-    role?: UserRole;
     isActive?: boolean;
   }): Promise<[User[], number]> {
     const query = this.repository.createQueryBuilder('user');
-
-    if (options?.role) {
-      query.andWhere('user.role = :role', { role: options.role });
-    }
 
     if (options?.isActive !== undefined) {
       query.andWhere('user.isActive = :isActive', { isActive: options.isActive });
@@ -68,6 +63,10 @@ export class UserRepository {
 
 
 
+
+  async save(user: User): Promise<User> {
+    return await this.repository.save(user);
+  }
 
   async count(): Promise<number> {
     return await this.repository.count();

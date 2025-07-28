@@ -1,5 +1,4 @@
 import { Request, Response, NextFunction } from 'express';
-import { User } from '../entities/User';
 import { config } from '../config/environment';
 
 /**
@@ -17,8 +16,8 @@ export const sessionSecurity = (req: Request, res: Response, next: NextFunction)
     return next();
   }
 
-  const user = req.user as User;
-  const session = req.session as any;
+  const user = req.user;
+  const session = req.session;
 
   try {
     let tokenExpired = false;

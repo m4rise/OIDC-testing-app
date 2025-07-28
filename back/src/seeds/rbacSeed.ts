@@ -1,7 +1,7 @@
 import { AppDataSource } from '../data-source';
 import { Role } from '../entities/Role';
 import { Permission } from '../entities/Permission';
-import { User, UserRole } from '../entities/User';
+import { User } from '../entities/User';
 
 export async function seedRBACData() {
   await AppDataSource.initialize();
@@ -75,24 +75,6 @@ export async function seedRBACData() {
     });
 
     console.log('✅ Created 3 roles with permissions');
-
-    // Migrate existing users from old role system to new RBAC
-    const usersWithOldRoles = await userRepo.find({
-      where: { role: UserRole.ADMIN }
-    });
-
-    for (const user of usersWithOldRoles) {
-      if (user.role === UserRole.ADMIN) {
-        user.assignRole(adminRole);
-      } else if (user.role === UserRole.MODERATOR) {
-        user.assignRole(moderatorRole);
-      } else {
-        user.assignRole(userRole);
-      }
-
-      await userRepo.save(user);
-      console.log(`✅ Migrated user ${user.email} to role: ${user.role}`);
-    }
 
     console.log('✅ RBAC data seeded successfully');
 

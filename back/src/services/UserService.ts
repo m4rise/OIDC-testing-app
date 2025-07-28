@@ -1,24 +1,23 @@
 import { UserRepository } from '../repositories/UserRepository';
-import { User, UserRole } from '../entities/User';
+import { User } from '../entities/User';
+import { Role } from '../entities/Role';
+import { AppDataSource } from '../data-source';
 
 export interface CreateUserDto {
   email: string;
   firstName: string;
   lastName: string;
-  role?: UserRole;
 }
 
 export interface UpdateUserDto {
   firstName?: string;
   lastName?: string;
-  role?: UserRole;
   isActive?: boolean;
 }
 
 export interface UserListOptions {
   page?: number;
   limit?: number;
-  role?: UserRole;
   isActive?: boolean;
 }
 
@@ -46,13 +45,12 @@ export class UserService {
   }
 
   async getUsers(options: UserListOptions = {}): Promise<PaginatedUsers> {
-    const { page = 1, limit = 10, role, isActive } = options;
+    const { page = 1, limit = 10, isActive } = options;
     const skip = (page - 1) * limit;
 
     const [users, total] = await this.userRepository.findAll({
       skip,
       take: limit,
-      role,
       isActive,
     });
 
@@ -74,11 +72,22 @@ export class UserService {
       throw new Error('User with this email already exists');
     }
 
-    return await this.userRepository.create({
+    // Create the user without role
+    const user = await this.userRepository.create({
       ...userData,
-      role: userData.role || UserRole.USER,
       isActive: true,
     });
+
+    // Assign default 'user' role using RBAC
+    const roleRepository = AppDataSource.getRepository(Role);
+    const defaultRole = await roleRepository.findOne({ where: { name: 'user' } });
+
+    if (defaultRole) {
+      user.assignRole(defaultRole);
+      await this.userRepository.save(user);
+    }
+
+    return user;
   }
 
   async updateUser(id: string, userData: UpdateUserDto): Promise<User> {
@@ -108,27 +117,34 @@ export class UserService {
 
   async getUserStats(): Promise<{
     total: number;
-    byRole: Record<UserRole, number>;
+    byRole: Record<string, number>;
     active: number;
     inactive: number;
   }> {
     const total = await this.userRepository.count();
 
-    // Count by role using repository queries
-    const adminCount = await this.userRepository.findAll({ role: UserRole.ADMIN });
-    const moderatorCount = await this.userRepository.findAll({ role: UserRole.MODERATOR });
-    const userCount = await this.userRepository.findAll({ role: UserRole.USER });
+    // Count by role using role repository
+    const roleRepository = AppDataSource.getRepository(Role);
+    const roles = await roleRepository.find();
+
+    const byRole: Record<string, number> = {};
+
+    // Count users for each role
+    for (const role of roles) {
+      const usersWithRole = await roleRepository
+        .createQueryBuilder('role')
+        .leftJoin('role.users', 'user')
+        .where('role.id = :roleId', { roleId: role.id })
+        .getCount();
+      byRole[role.name] = usersWithRole;
+    }
 
     const [, activeCount] = await this.userRepository.findAll({ isActive: true });
     const [, inactiveCount] = await this.userRepository.findAll({ isActive: false });
 
     return {
       total,
-      byRole: {
-        [UserRole.ADMIN]: adminCount[1],
-        [UserRole.MODERATOR]: moderatorCount[1],
-        [UserRole.USER]: userCount[1],
-      },
+      byRole,
       active: activeCount,
       inactive: inactiveCount,
     };

@@ -16,7 +16,7 @@ export class AuthController {
     const returnTo = req.query.returnTo as string || '/';
 
     if (req.session) {
-      (req.session as any).returnTo = returnTo;
+      req.session.returnTo = returnTo;
     }
 
     // Use standard passport authenticate
@@ -45,11 +45,11 @@ export class AuthController {
 
         // Store JWT expiry in session after passport login completes
         // This ensures it persists after session serialization/deserialization
-        if ((user as any).tempJwtExpiry) {
-          (req.session as any).jwtExpiry = (user as any).tempJwtExpiry;
-          console.log('🔒 Stored JWT expiry in session after login:', new Date((user as any).tempJwtExpiry).toISOString());
+        if (user.tempJwtExpiry) {
+          req.session.jwtExpiry = user.tempJwtExpiry;
+          console.log('🔒 Stored JWT expiry in session after login:', new Date(user.tempJwtExpiry).toISOString());
           // Clean up temporary property
-          delete (user as any).tempJwtExpiry;
+          delete user.tempJwtExpiry;
         }
 
         const successUrl = this.getSuccessRedirect(req);
@@ -74,7 +74,7 @@ export class AuthController {
 
   // Check authentication status
   checkAuth = (req: Request, res: Response) => {
-    const isAuthenticated = !!(req.session as any)?.passport?.user || !!req.user;
+    const isAuthenticated = !!req.session?.passport?.user || !!req.user;
     res.json({
       isAuthenticated,
       user: req.user || null
@@ -83,8 +83,8 @@ export class AuthController {
 
   // Logout user
   logout = (req: Request, res: Response): void => {
-    const isAuthenticated = !!(req.session as any)?.passport?.user || !!req.user;
-    const userEmail = req.user ? (req.user as any).email : 'anonymous';
+    const isAuthenticated = !!req.session?.passport?.user || !!req.user;
+    const userEmail = req.user ? req.user.email : 'anonymous';
 
     req.logout((err) => {
       if (err) {
@@ -136,7 +136,7 @@ export class AuthController {
   };
 
   private getSuccessRedirect(req: Request): string {
-    const returnTo = (req.session as any)?.returnTo || config.redirects.loginSuccessPath;
+    const returnTo = req.session?.returnTo || config.redirects.loginSuccessPath;
     const frontendUrl = config.frontendUrl;
     return `${frontendUrl}${returnTo}`;
   }

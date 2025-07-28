@@ -19,9 +19,6 @@ export interface SessionInfo {
   totalPermissions?: number;
 }
 
-// For backward compatibility in some places
-export type UserRole = 'admin' | 'moderator' | 'user';
-
 export interface ApiResponse<T = any> {
   data?: T;
   error?: string;
@@ -41,12 +38,12 @@ export interface CreateUserDto {
   email: string;
   firstName: string;
   lastName: string;
-  role?: string; // Now accepts role name
+  roles?: string[]; // RBAC roles array
 }
 
 export interface UpdateUserDto {
   firstName?: string;
   lastName?: string;
-  role?: string; // Now accepts role name
+  roles?: string[]; // RBAC roles array
   isActive?: boolean;
 }

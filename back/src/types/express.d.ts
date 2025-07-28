@@ -1,17 +1,22 @@
-/// <reference types="express" />
-
-import { UserRole } from '../entities/User';
+import express from 'express';
 
 declare global {
   namespace Express {
     interface User {
       id: string;
+      nni: string;
       email: string;
       firstName: string;
       lastName: string;
-      role: UserRole;
+      fullName: string;
+      roles: string[];
+      currentRole: string;
+      permissions: string[];
       isActive: boolean;
-      hasPermission: (permission: string) => boolean;
+      createdAt: Date;
+      lastLoginAt: Date | null;
+      updatedAt: Date;
+      tempJwtExpiry?: number;
     }
   }
 }

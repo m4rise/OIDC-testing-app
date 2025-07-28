@@ -33,7 +33,11 @@
       "@/routes/*": ["src/routes/*"],
       "@/config/*": ["src/config/*"],
       "@/types/*": ["src/types/*"]
-    }
+    },
+  },
+  "ts-node": {
+    "files": true,
+    "typeCheck": true
   },
   "include": ["src/**/*"],
   "exclude": ["node_modules", "dist", "**/*.test.ts"]
