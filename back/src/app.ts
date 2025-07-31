@@ -7,7 +7,6 @@ import helmet from 'helmet';
 import compression from 'compression';
 import morgan from 'morgan';
 import { AppDataSource } from './data-source';
-// Temporarily disable auth and route imports to isolate path-to-regexp error
 import { configureOIDC } from './config/auth';
 import passport from './config/auth';
 import { sessionSecurity } from './middleware/security';
@@ -115,19 +114,19 @@ function setupApp() {
     saveUninitialized: false, // Don't create sessions for unauthenticated users
     rolling: true, // Reset expiration on activity (sliding session)
     cookie: {
-      secure: config.isProduction, // Will work with trust proxy now
+      secure: true, // Will work with trust proxy now
       httpOnly: true, // Prevent XSS attacks by blocking JavaScript access
       maxAge: config.session.rollingMinutes * 60 * 1000, // Rolling session duration (resets on activity)
       sameSite: config.isDevelopment
-        ? 'none' // Allow cross-origin in development (front.localhost <-> node.localhost)
-        : 'lax', // Change from 'strict' to 'lax' for better compatibility
+        ? false // Allow cross-origin in development (front.localhost <-> node.localhost)
+        : 'strict', // Change from 'strict' to 'lax' for better compatibility
       path: '/', // Cookie available for all app paths
       domain: config.isDevelopment ? undefined : config.session.cookieDomain, // Explicit domain in production
     },
     name: config.isDevelopment
       ? 'connect.sid' // Default name for development
       : config.session.cookieName || 'app_session', // Custom name in production
-    proxy: true, // Trust proxy headers from Nginx
+    proxy: true, // Trust proxy headers from Nginx/Traefik
   }));
 
   // Passport middleware
