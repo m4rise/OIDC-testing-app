@@ -51,48 +51,16 @@ AppDataSource.initialize()
   });
 
 function setupApp() {
-  // Build form-action CSP directive dynamically based on OIDC configuration
-  function buildFormActionDirective(): string[] {
-    const formActions = ["'self'", BACKEND_URL, FRONTEND_URL];
+  // Add trust proxy FIRST, before any other middleware
+  app.set('trust proxy', 1);
 
-    // Add real OIDC issuer if configured (for production)
-    if (config.oidc.issuer) {
-      const realOidcIssuer = config.oidc.issuer;
-      if (!formActions.includes(realOidcIssuer)) {
-        formActions.push(realOidcIssuer);
-      }
-    }
-
-    return formActions;
-  }
-
-  // Always enable CSP for better security
-  app.use(helmet({
-    contentSecurityPolicy: {
-      directives: {
-        defaultSrc: ["'self'"],
-          styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com", "https:"],
-          fontSrc: ["'self'", "https://fonts.gstatic.com", "https:", "data:"],
-          scriptSrc: ["'self'", "'unsafe-inline'"],
-          imgSrc: ["'self'", "data:", "https:"],
-          formAction: buildFormActionDirective(),
-          connectSrc: ["'self'", BACKEND_URL, FRONTEND_URL, INTERNAL_BACKEND_URL, "https:", "wss:"],
-          frameSrc: ["'self'", "https:"],
-          childSrc: ["'self'", "https:"],
-        },
-      },
+  // Minimal Helmet for development only; in production, all security headers are handled by Nginx
+  if (config.isDevelopment) {
+    app.use(helmet({
+      contentSecurityPolicy: false,
       crossOriginEmbedderPolicy: false,
-      // Enhanced security headers for production
-      xFrameOptions: { action: 'deny' },
-      xContentTypeOptions: true,
-      xXssProtection: true,
-      referrerPolicy: { policy: 'strict-origin-when-cross-origin' },
-      hsts: {
-        maxAge: 31536000,
-        includeSubDomains: true,
-        preload: true
-      }
     }));
+  }
 
   // Basic middleware
   app.use(compression());
@@ -147,19 +115,19 @@ function setupApp() {
     saveUninitialized: false, // Don't create sessions for unauthenticated users
     rolling: true, // Reset expiration on activity (sliding session)
     cookie: {
-      secure: true, // HTTPS only
+      secure: config.isProduction, // Will work with trust proxy now
       httpOnly: true, // Prevent XSS attacks by blocking JavaScript access
       maxAge: config.session.rollingMinutes * 60 * 1000, // Rolling session duration (resets on activity)
       sameSite: config.isDevelopment
         ? 'none' // Allow cross-origin in development (front.localhost <-> node.localhost)
-        : 'strict', // Strong CSRF protection in production (same domain)
+        : 'lax', // Change from 'strict' to 'lax' for better compatibility
       path: '/', // Cookie available for all app paths
       domain: config.isDevelopment ? undefined : config.session.cookieDomain, // Explicit domain in production
     },
     name: config.isDevelopment
       ? 'connect.sid' // Default name for development
       : config.session.cookieName || 'app_session', // Custom name in production
-    proxy: true, // Trust proxy headers from Traefik
+    proxy: true, // Trust proxy headers from Nginx
   }));
 
   // Passport middleware

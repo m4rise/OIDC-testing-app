@@ -31,8 +31,9 @@ export const configureOIDC = async () => {
     console.log('✅ Configuring OIDC strategy with issuer:', issuerUrl);
     console.log('✅ Callback URL:', callbackURL);
 
+    const USE_SECRET_POST = true; // Use client_secret_post for better compatibility
     // Create configuration using discovery
-    const config = await client.discovery(new URL(issuerUrl), clientId, clientSecret, undefined, {
+    const config = await client.discovery(new URL(issuerUrl), clientId, clientSecret, USE_SECRET_POST ? client.ClientSecretPost(clientSecret) : client.ClientSecretBasic(clientSecret), {
       execute: useDevInterceptor ? [client.allowInsecureRequests] : undefined,
     });
 
