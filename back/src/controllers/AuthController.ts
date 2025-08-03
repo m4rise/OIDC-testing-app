@@ -94,7 +94,7 @@ export class AuthController {
       }
 
       // Destroy session
-      req.session.destroy((err) => {
+      req.session.destroy((err: Error | null) => {
         if (err) {
           console.error('Session destruction error:', err);
           res.status(500).json({ error: 'Session cleanup failed' });

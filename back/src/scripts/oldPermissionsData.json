@@ -1,0 +1,38 @@
+{
+  "admin": {
+    "consultation": {
+      "annuaire": true,
+      "installation": true,
+      "referentiel_technique": true
+    },
+    "outils": {
+      "support_service": true
+    },
+    "catalogue": true,
+    "administration": true,
+    "documentation": true
+  },
+  "moderator": {
+    "consultation": {
+      "annuaire": true,
+      "installation": true
+    },
+    "catalogue": true,
+    "administration": false,
+    "documentation": true
+  },
+  "user": {
+    "consultation": {
+      "annuaire": true
+    },
+    "catalogue": true,
+    "documentation": true
+  },
+  "guest": {
+    "consultation": {
+      "annuaire": false
+    },
+    "catalogue": false,
+    "documentation": true
+  }
+}

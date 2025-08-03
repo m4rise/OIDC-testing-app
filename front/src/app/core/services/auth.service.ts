@@ -197,19 +197,32 @@ export class AuthService implements OnDestroy {
   }
 
   /**
-   * Check if user permission matches required permission (with wildcard support)
+   * Check if a user permission matches a required permission (supports wildcards)
+   *
+   * Principe: Les permissions plus courtes couvrent les plus longues
+   * + support des wildcards bidirectionnels
    */
   private matchesPermission(userPermission: string, requiredPermission: string): boolean {
     const userParts = userPermission.split(':');
     const reqParts = requiredPermission.split(':');
 
-    // Shorter permissions cover longer ones: "api:user" covers "api:user:read:self"
-    if (userParts.length <= reqParts.length) {
-      for (let i = 0; i < userParts.length; i++) {
-        if (userParts[i] !== reqParts[i] && userParts[i] !== '*') {
-          return false;
-        }
+    // On compare sur la longueur la plus courte
+    const minLength = Math.min(userParts.length, reqParts.length);
+
+    for (let i = 0; i < minLength; i++) {
+      if (userParts[i] !== reqParts[i] && userParts[i] !== '*' && reqParts[i] !== '*') {
+        return false;
       }
+    }
+
+    // Si user est plus court ou égal, c'est OK (principe hiérarchique)
+    if (userParts.length <= reqParts.length) {
+      return true;
+    }
+
+    // Si user est plus long ET que required se termine par un wildcard,
+    // alors user peut être plus spécifique
+    if (reqParts[reqParts.length - 1] === '*') {
       return true;
     }
 

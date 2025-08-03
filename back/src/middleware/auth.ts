@@ -13,19 +13,37 @@ export const getAuthenticatedUser = (req: Request) => {
 
 /**
  * Check if a user permission matches a required permission (supports wildcards)
- * Shorter permissions cover longer ones: "api:user" covers "api:user:read:self"
+ *
+ * Principe: Les permissions plus courtes couvrent les plus longues
+ * + support des wildcards bidirectionnels
+ *
+ * Exemples:
+ * - "api:user" couvre "api:user:read:self" (hiérarchique)
+ * - "api:*" couvre "api:user:read:self" (wildcard user)
+ * - "api:user:read:self" match "api:*:read:*" (wildcard requis)
+ * - "api:user:read:self:extra" match "api:*:read:*" (wildcard extensible)
  */
 export const matchesPermission = (userPermission: string, requiredPermission: string): boolean => {
   const userParts = userPermission.split(':');
   const reqParts = requiredPermission.split(':');
 
-  // Shorter permissions cover longer ones
-  if (userParts.length <= reqParts.length) {
-    for (let i = 0; i < userParts.length; i++) {
-      if (userParts[i] !== reqParts[i] && userParts[i] !== '*') {
-        return false;
-      }
+  // On compare sur la longueur la plus courte
+  const minLength = Math.min(userParts.length, reqParts.length);
+
+  for (let i = 0; i < minLength; i++) {
+    if (userParts[i] !== reqParts[i] && userParts[i] !== '*' && reqParts[i] !== '*') {
+      return false;
     }
+  }
+
+  // Si user est plus court ou égal, c'est OK (principe hiérarchique)
+  if (userParts.length <= reqParts.length) {
+    return true;
+  }
+
+  // Si user est plus long ET que required se termine par un wildcard,
+  // alors user peut être plus spécifique
+  if (reqParts[reqParts.length - 1] === '*') {
     return true;
   }
 
@@ -101,26 +119,64 @@ export const requireActiveAccount = (req: Request, res: Response, next: NextFunc
 
 /**
  * Check if user has a specific permission (assumes user is authenticated)
+ * Supports both hierarchical permissions and wildcard patterns
  */
 export function checkPermission(requiredPermission: string) {
   return (req: Request, res: Response, next: NextFunction) => {
     try {
       const user = getAuthenticatedUser(req);
-      const userPermissions = user?.permissions || [];
 
-      const hasPermission = userPermissions.some(permission =>
-        matchesPermission(permission, requiredPermission)
-      );
-
-      if (!hasPermission) {
-        console.log(`❌ Permission denied: User ${user?.email} lacks ${requiredPermission}`);
+      if (!user) {
+        console.log(`❌ Permission denied: No authenticated user for ${requiredPermission}`);
         sendInsufficientPermissions(res, requiredPermission);
         return;
       }
 
-      console.log(`✅ Permission granted: ${requiredPermission} for ${user?.email}`);
+      // Get user permissions from roles and direct permissions
+      const userPermissions: string[] = [];
+
+      // Add permissions from roles
+      if (user.roles && Array.isArray(user.roles)) {
+        user.roles.forEach((role: any) => {
+          if (role.permissions && Array.isArray(role.permissions)) {
+            role.permissions.forEach((perm: any) => {
+              if (typeof perm === 'string') {
+                userPermissions.push(perm);
+              } else if (perm.name) {
+                userPermissions.push(perm.name);
+              }
+            });
+          }
+        });
+      }
+
+      // Add direct permissions (if any)
+      if (user.permissions && Array.isArray(user.permissions)) {
+        user.permissions.forEach((perm: any) => {
+          if (typeof perm === 'string') {
+            userPermissions.push(perm);
+          } else if (perm.name) {
+            userPermissions.push(perm.name);
+          }
+        });
+      }
+
+      // Check if user has the required permission
+      const hasPermission = userPermissions.some(userPerm =>
+        matchesPermission(userPerm, requiredPermission)
+      );
+
+      if (!hasPermission) {
+        console.log(`❌ Permission denied: User ${user.email} lacks ${requiredPermission}`);
+        console.log(`   User permissions: [${userPermissions.join(', ')}]`);
+        sendInsufficientPermissions(res, requiredPermission);
+        return;
+      }
+
+      console.log(`✅ Permission granted: ${requiredPermission} for ${user.email}`);
       next();
     } catch (error) {
+      console.error('Permission check error:', error);
       sendAuthorizationError(res, error as Error);
     }
   };

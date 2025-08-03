@@ -54,7 +54,7 @@ export const sessionSecurity = (req: Request, res: Response, next: NextFunction)
           console.error('❌ Error during forced logout:', logoutErr);
         }
 
-        req.session.destroy((sessionErr) => {
+        req.session.destroy((sessionErr: Error | null) => {
           if (sessionErr) {
             console.error('❌ Error destroying session:', sessionErr);
           }
