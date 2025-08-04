@@ -1,9 +1,17 @@
+#!/usr/bin/env node
+
+/**
+ * Unified Permission Migration Script
+ *
+ * This script migrates your old role/permission structure to the new wildcard-based system.
+ * It uses your existing AppDataSource configuration.
+ */
+
+import 'reflect-metadata';
 import { DataSource } from 'typeorm';
+import { AppDataSource } from '../data-source';
 import { Role } from '../entities/Role';
 import { Permission } from '../entities/Permission';
-import { User } from '../entities/User';
-import * as fs from 'fs';
-import * as path from 'path';
 
 interface OldRoleStructure {
   [roleName: string]: {
@@ -33,12 +41,12 @@ class OptimizedPermissionMigrator {
   }
 
   /**
-   * Génère les permissions optimisées avec ta logique "du général au spécifique"
-   * + wildcards internes pour éviter la duplication
+   * Génère les permissions optimisées pour les routes Angular
+   * Structure hiérarchique pour les guards
    */
   private generateOptimizedPermissions(): Array<{name: string, description: string}> {
     return [
-      // 🚪 PERMISSIONS ROUTE - Structure hiérarchique
+      // 🚪 PERMISSIONS ROUTE - Structure hiérarchique pour guards Angular
       { name: 'route', description: 'Accès à toutes les routes' },
       { name: 'route:read', description: 'Accès à toutes les pages de consultation' },
       { name: 'route:admin', description: 'Accès à toutes les pages d\'administration' },
@@ -55,59 +63,12 @@ class OptimizedPermissionMigrator {
       { name: 'route:admin:users', description: 'Accéder à la gestion utilisateurs' },
       { name: 'route:admin:system', description: 'Accéder à l\'administration système' },
       { name: 'route:admin:roles', description: 'Accéder à la gestion des rôles' },
-
-      // 🔌 PERMISSIONS API - Structure hiérarchique
-      { name: 'api', description: 'Accès à toutes les API' },
-
-      // API par domaine (permissions courtes = plus de droits)
-      { name: 'api:user', description: 'Toutes opérations utilisateur' },
-      { name: 'api:role', description: 'Toutes opérations rôles' },
-      { name: 'api:annuaire', description: 'Toutes opérations annuaire' },
-      { name: 'api:installation', description: 'Toutes opérations installation' },
-      { name: 'api:catalogue', description: 'Toutes opérations catalogue' },
-      { name: 'api:documentation', description: 'Toutes opérations documentation' },
-      { name: 'api:support', description: 'Toutes opérations support' },
-      { name: 'api:system', description: 'Toutes opérations système' },
-
-      // API par type d'action (avec wildcard interne pour éviter duplication)
-      { name: 'api:*:read', description: 'Lecture sur toutes les API' },
-      { name: 'api:*:write', description: 'Écriture sur toutes les API' },
-      { name: 'api:*:delete', description: 'Suppression sur toutes les API' },
-
-      // API spécifiques pour contrôle fin
-      { name: 'api:user:read', description: 'Consulter les utilisateurs' },
-      { name: 'api:user:write', description: 'Modifier les utilisateurs' },
-      { name: 'api:user:delete', description: 'Supprimer les utilisateurs' },
-      { name: 'api:user:read:self', description: 'Consulter son propre profil' },
-      { name: 'api:user:write:self', description: 'Modifier son propre profil' },
-
-      { name: 'api:annuaire:read', description: 'Consulter l\'annuaire' },
-      { name: 'api:annuaire:write', description: 'Modifier l\'annuaire' },
-      { name: 'api:annuaire:delete', description: 'Supprimer des entrées annuaire' },
-
-      { name: 'api:installation:read', description: 'Consulter les installations' },
-      { name: 'api:installation:write', description: 'Modifier les installations' },
-      { name: 'api:installation:delete', description: 'Supprimer des installations' },
-
-      { name: 'api:catalogue:read', description: 'Consulter le catalogue' },
-      { name: 'api:catalogue:write', description: 'Modifier le catalogue' },
-      { name: 'api:catalogue:publish', description: 'Publier dans le catalogue' },
-
-      { name: 'api:documentation:read', description: 'Consulter la documentation' },
-      { name: 'api:documentation:write', description: 'Modifier la documentation' },
-
-      { name: 'api:support:read', description: 'Consulter les tickets support' },
-      { name: 'api:support:write', description: 'Créer/modifier des tickets' },
-
-      { name: 'api:system:config', description: 'Configuration système' },
-      { name: 'api:system:logs', description: 'Accès aux logs système' },
-      { name: 'api:system:backup', description: 'Gestion des sauvegardes' },
     ];
   }
 
   /**
-   * Mapping intelligent de l'ancien système vers le nouveau
-   * Utilise la stratégie "permission la plus courte possible"
+   * Mapping intelligent de l'ancien système vers les nouvelles permissions route
+   * Focalisé uniquement sur les guards Angular
    */
   private mapOldToOptimizedPermissions(oldStructure: OldRoleStructure): { [roleName: string]: string[] } {
     const mapping: { [roleName: string]: string[] } = {};
@@ -115,99 +76,58 @@ class OptimizedPermissionMigrator {
     for (const [roleName, perms] of Object.entries(oldStructure)) {
       const permissions: string[] = [];
 
-      // 🔍 Analyser les consultations
+      // 🔍 Analyser les consultations pour les routes
       const consultationRoutes = [];
       if (perms.consultation?.annuaire) {
         consultationRoutes.push('annuaire');
         permissions.push('route:read:annuaire');
-        permissions.push('api:annuaire:read');
       }
       if (perms.consultation?.installation) {
         consultationRoutes.push('installation');
         permissions.push('route:read:installation');
-        permissions.push('api:installation:read');
       }
       if (perms.consultation?.referentiel_technique) {
         consultationRoutes.push('referentiel-technique');
         permissions.push('route:read:referentiel-technique');
-        permissions.push('api:referentiel:read');
       }
 
       // Si accès à toutes les consultations → optimiser avec permission courte
       if (consultationRoutes.length >= 3) {
-        // Remplacer par permissions plus courtes
+        // Remplacer par permission plus courte
         permissions.length = 0;
         permissions.push('route:read');
-        permissions.push('api:*:read');
       }
 
       // 📋 Catalogue
       if (perms.catalogue) {
         permissions.push('route:read:catalogue');
-        permissions.push('api:catalogue:read');
       }
 
       // 📚 Documentation
       if (perms.documentation) {
         permissions.push('route:read:documentation');
-        permissions.push('api:documentation:read');
       }
 
       // 🔧 Support
       if (perms.outils?.support_service) {
         permissions.push('route:read:support-service');
-        permissions.push('api:support:read');
       }
 
       // 🛠️ Administration
       if (perms.administration) {
         permissions.push('route:admin');
-        permissions.push('api:user');
-        permissions.push('api:role');
-        permissions.push('api:system');
       }
 
-      // 🎯 Permissions étendues selon le niveau du rôle
+      // 🎯 Permissions spéciales selon le niveau du rôle
       switch (roleName) {
-        case 'MOA':
-          // MOA = consultation pure
-          break;
-
-        case 'SSE':
-        case 'SSESANSMDP':
-          // SSE = sécurité → logs + modifications installations
-          if (perms.consultation?.installation) {
-            permissions.push('api:installation:write');
-          }
-          permissions.push('api:system:logs');
-          break;
-
-        case 'CHEF DE PROJET':
-          // Chef de projet = vue d'ensemble + modifications limitées
-          if (perms.consultation?.installation) {
-            permissions.push('api:installation:write');
-          }
-          permissions.push('api:user:read:self');
-          break;
-
-        case 'CCN MULTIMEDIA':
-          // CCN = technicien avancé
-          if (perms.catalogue) {
-            permissions.push('api:catalogue'); // Permission courte = tous droits catalogue
-          }
-          if (perms.outils?.support_service) {
-            permissions.push('api:support'); // Permission courte = tous droits support
-          }
-          if (perms.documentation) {
-            permissions.push('api:documentation:write');
-          }
-          break;
-
         case 'ADMINISTRATEUR':
-          // Admin = super permissions
+          // Admin = accès à tout
           permissions.length = 0;
           permissions.push('route');
-          permissions.push('api');
+          break;
+
+        default:
+          // Autres rôles gardent leurs permissions spécifiques
           break;
       }
 
@@ -300,14 +220,12 @@ class OptimizedPermissionMigrator {
 
         // Affichage détaillé
         const routePerms = permissionNames.filter(p => p.startsWith('route:'));
-        const apiPerms = permissionNames.filter(p => p.startsWith('api:'));
 
         console.log(`  ✅ ${roleName} (${newPermissions.length} permissions):`);
         if (routePerms.length > 0) {
           console.log(`     🚪 Routes: ${routePerms.join(', ')}`);
-        }
-        if (apiPerms.length > 0) {
-          console.log(`     🔌 APIs: ${apiPerms.join(', ')}`);
+        } else {
+          console.log(`     � Routes: Aucune permission route`);
         }
       }
 
@@ -327,10 +245,10 @@ class OptimizedPermissionMigrator {
   }
 
   /**
-   * Affichage du résumé final
+   * Affichage du résumé final - focalisé sur les permissions route
    */
   private async displaySummary(): Promise<void> {
-    console.log('\n=== RÉSUMÉ DE LA MIGRATION ===');
+    console.log('\n=== RÉSUMÉ DE LA MIGRATION (ROUTES) ===');
 
     const roles = await this.roleRepository.find({
       relations: ['permissions'],
@@ -345,81 +263,109 @@ class OptimizedPermissionMigrator {
         .map((perm: Permission) => perm.name)
         .sort();
 
-      const apiPermissions = role.permissions
-        .filter((perm: Permission) => perm.name.startsWith('api:'))
-        .map((perm: Permission) => perm.name)
-        .sort();
-
       if (routePermissions.length > 0) {
         console.log(`   🚪 Routes (${routePermissions.length}):`);
         routePermissions.forEach((perm: string) => console.log(`      - ${perm}`));
-      }
-
-      if (apiPermissions.length > 0) {
-        console.log(`   🔌 APIs (${apiPermissions.length}):`);
-        apiPermissions.forEach((perm: string) => console.log(`      - ${perm}`));
-      }
-
-      if (routePermissions.length === 0 && apiPermissions.length === 0) {
-        console.log('   - Aucune permission route/api');
+      } else {
+        console.log('   - Aucune permission route');
       }
     }
   }
 
   /**
-   * Migration depuis un fichier JSON
+   * Obtient la structure des anciens rôles
+   * Basée sur votre système existant
    */
-  async migrateFromFile(filePath: string): Promise<void> {
-    console.log(`📖 Reading role structure from: ${filePath}`);
+  private getOldRoleStructure(): OldRoleStructure {
+    return {
+      'ADMINISTRATEUR': {
+        consultation: { annuaire: true, installation: true, referentiel_technique: true },
+        outils: { support_service: true },
+        catalogue: true,
+        administration: true,
+        documentation: true
+      },
+      'CCN MULTIMEDIA': {
+        consultation: { annuaire: true, installation: true, referentiel_technique: true },
+        outils: { support_service: true },
+        catalogue: true,
+        documentation: true
+      },
+      'CHEF DE PROJET': {
+        consultation: { annuaire: true, installation: true, referentiel_technique: true },
+        catalogue: true,
+        documentation: true
+      },
+      'SSE': {
+        consultation: { annuaire: true, installation: true, referentiel_technique: true },
+        documentation: true
+      },
+      'SSESANSMDP': {
+        consultation: { annuaire: true, installation: true },
+        documentation: true
+      },
+      'MOA': {
+        consultation: { annuaire: true },
+        catalogue: true,
+        documentation: true
+      }
+    };
+  }
 
-    if (!fs.existsSync(filePath)) {
-      throw new Error(`File not found: ${filePath}`);
-    }
-
-    const fileContent = fs.readFileSync(filePath, 'utf8');
-    const oldStructure: OldRoleStructure = JSON.parse(fileContent);
-
+  /**
+   * Migration avec la structure de données intégrée
+   */
+  async migrateFromOldStructure(): Promise<void> {
+    console.log('📖 Using integrated old role structure...');
+    const oldStructure = this.getOldRoleStructure();
     await this.migrate(oldStructure);
   }
 }
 
 /**
- * Script principal d'exécution
+ * Fonction principale de migration
  */
-async function runMigration() {
-  // Configuration TypeORM
-  const dataSource = new DataSource({
-    type: 'postgres',
-    host: process.env.DB_HOST || 'localhost',
-    port: parseInt(process.env.DB_PORT || '5432'),
-    username: process.env.DB_USERNAME || 'postgres',
-    password: process.env.DB_PASSWORD || 'password',
-    database: process.env.DB_DATABASE || 'testdb',
-    entities: [Role, Permission, User],
-    synchronize: false,
-    logging: false,
-  });
-
-  await dataSource.initialize();
-  console.log('✅ Database connection established');
+async function runPermissionMigration(): Promise<void> {
+  console.log('🚀 Starting Unified Permission Migration');
+  console.log('=' .repeat(50));
 
   try {
-    const migrator = new OptimizedPermissionMigrator(dataSource);
+    // Utiliser votre DataSource existant
+    console.log('📦 Initializing database connection using AppDataSource...');
+    await AppDataSource.initialize();
+    console.log('✅ Database connected successfully');
 
-    // Chemin vers le fichier de données
-    const dataFilePath = path.join(__dirname, '..', '..', 'data', 'legacy-roles.json');
+    // Créer l'instance de migration
+    const migrator = new OptimizedPermissionMigrator(AppDataSource);
 
-    await migrator.migrateFromFile(dataFilePath);
+    // Lancer la migration avec les données intégrées
+    console.log('📄 Using integrated old permissions data...');
+    await migrator.migrateFromOldStructure();
 
+    console.log('=' .repeat(50));
+    console.log('🎉 Migration completed successfully!');
+    console.log('');
+    console.log('Next steps:');
+    console.log('1. Update your frontend route guards to use the new route: permissions');
+    console.log('2. The Angular permission guards will now work with the hierarchical system');
+    console.log('3. Test the new permission system with your existing matchesPermission logic');
+    console.log('4. API permissions should be handled separately from route permissions');
+
+  } catch (error) {
+    console.error('❌ Migration failed:', error);
+    throw error;
   } finally {
-    await dataSource.destroy();
-    console.log('🔌 Database connection closed');
+    // Fermer la connexion
+    if (AppDataSource.isInitialized) {
+      await AppDataSource.destroy();
+      console.log('� Database connection closed');
+    }
   }
 }
 
 // Exécution si lancé directement
 if (require.main === module) {
-  runMigration()
+  runPermissionMigration()
     .then(() => {
       console.log('\n✨ Migration terminée avec succès !');
       process.exit(0);
@@ -430,4 +376,4 @@ if (require.main === module) {
     });
 }
 
-export { OptimizedPermissionMigrator };
+export { OptimizedPermissionMigrator, runPermissionMigration };
