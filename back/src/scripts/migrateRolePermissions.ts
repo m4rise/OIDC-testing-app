@@ -42,33 +42,31 @@ class OptimizedPermissionMigrator {
 
   /**
    * Génère les permissions optimisées pour les routes Angular
-   * Structure hiérarchique pour les guards
+   * Structure hiérarchique basée sur vos anciennes permissions
    */
   private generateOptimizedPermissions(): Array<{name: string, description: string}> {
     return [
-      // 🚪 PERMISSIONS ROUTE - Structure hiérarchique pour guards Angular
+      // 🚪 PERMISSIONS ROUTE - Structure hiérarchique du général au particulier
       { name: 'route', description: 'Accès à toutes les routes' },
-      { name: 'route:read', description: 'Accès à toutes les pages de consultation' },
-      { name: 'route:admin', description: 'Accès à toutes les pages d\'administration' },
 
-      // Routes spécifiques de consultation
-      { name: 'route:read:annuaire', description: 'Accéder à la page annuaire' },
-      { name: 'route:read:installation', description: 'Accéder à la page installations' },
-      { name: 'route:read:referentiel-technique', description: 'Accéder au référentiel technique' },
-      { name: 'route:read:catalogue', description: 'Accéder à la page catalogue' },
-      { name: 'route:read:documentation', description: 'Accéder à la documentation' },
-      { name: 'route:read:support-service', description: 'Accéder aux outils de support' },
+      // Permissions par domaine (basées sur votre ancienne structure)
+      { name: 'route:consultation', description: 'Accès aux pages de consultation' },
+      { name: 'route:consultation:annuaire', description: 'Accéder à la page annuaire' },
+      { name: 'route:consultation:installation', description: 'Accéder à la page installations' },
+      { name: 'route:consultation:referentiel-technique', description: 'Accéder au référentiel technique' },
 
-      // Routes d'administration
-      { name: 'route:admin:users', description: 'Accéder à la gestion utilisateurs' },
-      { name: 'route:admin:system', description: 'Accéder à l\'administration système' },
-      { name: 'route:admin:roles', description: 'Accéder à la gestion des rôles' },
+      { name: 'route:outils', description: 'Accès aux outils' },
+      { name: 'route:outils:support-service', description: 'Accéder aux outils de support' },
+
+      { name: 'route:catalogue', description: 'Accéder à la page catalogue' },
+      { name: 'route:documentation', description: 'Accéder à la documentation' },
+      { name: 'route:administration', description: 'Accéder à l\'administration' },
     ];
   }
 
   /**
-   * Mapping intelligent de l'ancien système vers les nouvelles permissions route
-   * Focalisé uniquement sur les guards Angular
+   * Mapping direct de l'ancien système vers les nouvelles permissions route
+   * Respecte la hiérarchie du général au particulier
    */
   private mapOldToOptimizedPermissions(oldStructure: OldRoleStructure): { [roleName: string]: string[] } {
     const mapping: { [roleName: string]: string[] } = {};
@@ -76,58 +74,60 @@ class OptimizedPermissionMigrator {
     for (const [roleName, perms] of Object.entries(oldStructure)) {
       const permissions: string[] = [];
 
-      // 🔍 Analyser les consultations pour les routes
-      const consultationRoutes = [];
+      // 🔍 Consultation - mapping direct
       if (perms.consultation?.annuaire) {
-        consultationRoutes.push('annuaire');
-        permissions.push('route:read:annuaire');
+        permissions.push('route:consultation:annuaire');
       }
       if (perms.consultation?.installation) {
-        consultationRoutes.push('installation');
-        permissions.push('route:read:installation');
+        permissions.push('route:consultation:installation');
       }
       if (perms.consultation?.referentiel_technique) {
-        consultationRoutes.push('referentiel-technique');
-        permissions.push('route:read:referentiel-technique');
+        permissions.push('route:consultation:referentiel-technique');
       }
 
-      // Si accès à toutes les consultations → optimiser avec permission courte
-      if (consultationRoutes.length >= 3) {
-        // Remplacer par permission plus courte
-        permissions.length = 0;
-        permissions.push('route:read');
+      // Si toutes les consultations → optimiser avec permission plus générale
+      const hasAllConsultations = perms.consultation?.annuaire &&
+                                 perms.consultation?.installation &&
+                                 perms.consultation?.referentiel_technique;
+      if (hasAllConsultations) {
+        // Remplacer par permission plus générale
+        const consultationPerms = permissions.filter(p => p.startsWith('route:consultation:'));
+        if (consultationPerms.length >= 3) {
+          permissions.splice(0, permissions.length, ...permissions.filter(p => !p.startsWith('route:consultation:')));
+          permissions.push('route:consultation');
+        }
       }
 
-      // 📋 Catalogue
-      if (perms.catalogue) {
-        permissions.push('route:read:catalogue');
-      }
-
-      // 📚 Documentation
-      if (perms.documentation) {
-        permissions.push('route:read:documentation');
-      }
-
-      // 🔧 Support
+      // � Outils
       if (perms.outils?.support_service) {
-        permissions.push('route:read:support-service');
+        permissions.push('route:outils:support-service');
+      }
+
+      // � Catalogue
+      if (perms.catalogue) {
+        permissions.push('route:catalogue');
+      }
+
+      // � Documentation
+      if (perms.documentation) {
+        permissions.push('route:documentation');
       }
 
       // 🛠️ Administration
       if (perms.administration) {
-        permissions.push('route:admin');
+        permissions.push('route:administration');
       }
 
       // 🎯 Permissions spéciales selon le niveau du rôle
       switch (roleName) {
         case 'ADMINISTRATEUR':
-          // Admin = accès à tout
+          // Admin = accès à tout (permission la plus générale)
           permissions.length = 0;
           permissions.push('route');
           break;
 
         default:
-          // Autres rôles gardent leurs permissions spécifiques
+          // Autres rôles gardent leurs permissions spécifiques basées sur l'ancienne structure
           break;
       }
 
