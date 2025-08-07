@@ -28,7 +28,7 @@ interface OldRoleStructure {
     administration?: boolean;
     documentation?: boolean;
     // 🆕 Définition du niveau d'accès API par rôle
-    apiLevel?: 'read' | 'write' | 'delete' | 'export' | 'support-service' | 'administration' | '*';
+    apiLevel?: ('read' | 'write' | 'delete' | 'export' | 'support-service' | 'administration' | '*')[];
     // 🆕 Domaines API spécifiques (optionnel)
     apiDomains?: string[];
   };
@@ -38,7 +38,7 @@ interface OldRoleStructure {
 interface RoleApiConfig {
   permissions: Array<{
     domains: string[];
-    level: 'read' | 'write' | 'delete' | 'export' | 'support-service' | 'administration' | '*';
+    levels: ('read' | 'write' | 'delete' | 'export' | 'support-service' | 'administration' | '*')[];
   }>;
   description: string;
 }
@@ -64,41 +64,44 @@ class OptimizedPermissionMigrator {
     return {
       'ADMINISTRATEUR': {
         permissions: [
-          { domains: ['*'], level: '*' } // Accès complet global (sera converti en 'api')
+          { domains: ['*'], levels: ['*'] } // Accès complet global (sera converti en 'api')
         ],
         description: 'Accès complet à toutes les API'
       },
       'CCN MULTIMEDIA': {
         permissions: [
-          { domains: ['*'], level: '*' }, // Accès complet global
+          { domains: ['*'], levels: ['*'] }, // Accès complet global
         ],
         description: 'Accès complet sur toutes les API (technique avancé)'
       },
       'CHEF DE PROJET': {
         permissions: [
-          { domains: ['contact', 'project'], level: '*' }, // Accès complet contact/project
-          { domains: ['user'], level: 'read' } // Lecture seule sur user
+          { domains: ['contact', 'project'], levels: ['*'] }, // Accès complet contact/project
+          { domains: ['user'], levels: ['read'] }, // Lecture seule sur user
+          { domains: ['installation'], levels: ['read', 'write'] } // Multiple levels example
         ],
         description: 'Accès complet projets/contacts, lecture utilisateurs'
       },
       'SSE': {
         permissions: [
-          { domains: ['*'], level: 'read' }, // Lecture globale
-          { domains: ['system', 'security'], level: '*' } // Accès complet sécurité
+          { domains: ['*'], levels: ['read'] }, // Lecture globale
+          { domains: ['system', 'security'], levels: ['*'] }, // Accès complet sécurité
+          { domains: ['installation'], levels: ['read', 'write', 'delete'] } // Multiple specific levels
         ],
         description: 'Lecture globale + accès complet sécurité'
       },
       'SSESANSMDP': {
         permissions: [
-          { domains: ['contact'], level: 'read' },
-          { domains: ['installation'], level: '*' } // Accès complet installation
+          { domains: ['contact'], levels: ['read'] },
+          { domains: ['installation'], levels: ['*'] } // Accès complet installation
         ],
         description: 'Lecture contact, accès complet installation'
       },
       'MOA': {
         permissions: [
-          { domains: ['contact', 'project'], level: 'read' }, // Lecture métier
-          { domains: ['documentation'], level: '*' } // Accès complet documentation
+          { domains: ['contact', 'project'], levels: ['read'] }, // Lecture métier
+          { domains: ['documentation'], levels: ['*'] }, // Accès complet documentation
+          { domains: ['user'], levels: ['read', 'export'] } // Multiple levels: read + export
         ],
         description: 'Lecture contact/projets, accès complet documentation'
       }
@@ -268,58 +271,61 @@ class OptimizedPermissionMigrator {
       if (apiConfig) {
         // Traiter chaque permission du rôle
         for (const permConfig of apiConfig.permissions) {
-          const { domains, level } = permConfig;
+          const { domains, levels } = permConfig;
 
-          if (domains.includes('*')) {
-            // Accès global
-            switch (level) {
-              case '*':
-                permissions.push('api:*'); // Accès complet global (sera converti en 'api')
-                break;
-              case 'administration':
-                permissions.push('api:*:administration');
-                break;
-              case 'support-service':
-                permissions.push('api:*:support-service');
-                break;
-              case 'export':
-                permissions.push('api:*:export');
-                break;
-              case 'delete':
-                permissions.push('api:*:delete');
-                break;
-              case 'write':
-                permissions.push('api:*:write');
-                break;
-              case 'read':
-                permissions.push('api:*:read');
-                break;
-            }
-          } else {
-            // Accès par domaine spécifique
-            for (const domain of domains) {
+          // Traiter chaque niveau pour chaque domaine
+          for (const level of levels) {
+            if (domains.includes('*')) {
+              // Accès global
               switch (level) {
                 case '*':
-                  permissions.push(`api:${domain}:*`); // Sera converti en api:domain
+                  permissions.push('api:*'); // Accès complet global (sera converti en 'api')
                   break;
                 case 'administration':
-                  permissions.push(`api:${domain}:administration`);
+                  permissions.push('api:*:administration');
                   break;
                 case 'support-service':
-                  permissions.push(`api:${domain}:support-service`);
+                  permissions.push('api:*:support-service');
                   break;
                 case 'export':
-                  permissions.push(`api:${domain}:export`);
+                  permissions.push('api:*:export');
                   break;
                 case 'delete':
-                  permissions.push(`api:${domain}:delete`);
+                  permissions.push('api:*:delete');
                   break;
                 case 'write':
-                  permissions.push(`api:${domain}:write`);
+                  permissions.push('api:*:write');
                   break;
                 case 'read':
-                  permissions.push(`api:${domain}:read`);
+                  permissions.push('api:*:read');
                   break;
+              }
+            } else {
+              // Accès par domaine spécifique
+              for (const domain of domains) {
+                switch (level) {
+                  case '*':
+                    permissions.push(`api:${domain}:*`); // Sera converti en api:domain
+                    break;
+                  case 'administration':
+                    permissions.push(`api:${domain}:administration`);
+                    break;
+                  case 'support-service':
+                    permissions.push(`api:${domain}:support-service`);
+                    break;
+                  case 'export':
+                    permissions.push(`api:${domain}:export`);
+                    break;
+                  case 'delete':
+                    permissions.push(`api:${domain}:delete`);
+                    break;
+                  case 'write':
+                    permissions.push(`api:${domain}:write`);
+                    break;
+                  case 'read':
+                    permissions.push(`api:${domain}:read`);
+                    break;
+                }
               }
             }
           }
@@ -495,7 +501,8 @@ class OptimizedPermissionMigrator {
         console.log(`   🎯 API Permissions:`);
         for (const permConfig of apiConfig.permissions) {
           const domainsList = permConfig.domains.join(', ');
-          console.log(`      - ${permConfig.level.toUpperCase()} sur ${domainsList}`);
+          const levelsList = permConfig.levels.join(', ');
+          console.log(`      - ${levelsList.toUpperCase()} sur ${domainsList}`);
         }
       }
 
@@ -536,7 +543,8 @@ class OptimizedPermissionMigrator {
 
       for (const permConfig of config.permissions) {
         const domainsList = permConfig.domains.join(',');
-        permissionsText += `${permConfig.level}:${domainsList} `;
+        const levelsList = permConfig.levels.join(',');
+        permissionsText += `${levelsList}:${domainsList} `;
       }
 
       const permissions = permissionsText.trim().padEnd(43);
