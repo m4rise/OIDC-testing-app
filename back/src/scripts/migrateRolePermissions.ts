@@ -28,7 +28,7 @@ interface OldRoleStructure {
     administration?: boolean;
     documentation?: boolean;
     // 🆕 Définition du niveau d'accès API par rôle
-    apiLevel?: 'read' | 'write' | 'delete' | 'export' | 'support-service' | 'administration';
+    apiLevel?: 'read' | 'write' | 'delete' | 'export' | 'support-service' | 'administration' | '*';
     // 🆕 Domaines API spécifiques (optionnel)
     apiDomains?: string[];
   };
@@ -38,7 +38,7 @@ interface OldRoleStructure {
 interface RoleApiConfig {
   permissions: Array<{
     domains: string[];
-    level: 'read' | 'write' | 'delete' | 'export' | 'support-service' | 'administration';
+    level: 'read' | 'write' | 'delete' | 'export' | 'support-service' | 'administration' | '*';
   }>;
   description: string;
 }
@@ -64,47 +64,43 @@ class OptimizedPermissionMigrator {
     return {
       'ADMINISTRATEUR': {
         permissions: [
-          { domains: ['*'], level: 'administration' } // Administration globale
+          { domains: ['*'], level: '*' } // Accès complet global (sera converti en 'api')
         ],
-        description: 'Accès administration complet à toutes les API'
+        description: 'Accès complet à toutes les API'
       },
       'CCN MULTIMEDIA': {
         permissions: [
-          { domains: ['*'], level: 'administration' }, // Administration globale
+          { domains: ['*'], level: '*' }, // Accès complet global
         ],
-        description: 'Administration complète sur toutes les API (technique avancé)'
+        description: 'Accès complet sur toutes les API (technique avancé)'
       },
       'CHEF DE PROJET': {
         permissions: [
-          { domains: ['contact', 'project'], level: 'write' }, // Écriture sur contact et projet
-          { domains: ['user'], level: 'read' }, // Lecture sur user
-          { domains: ['media'], level: 'delete' } // Peut supprimer des médias
+          { domains: ['contact', 'project'], level: '*' }, // Accès complet contact/project
+          { domains: ['user'], level: 'read' } // Lecture seule sur user
         ],
-        description: 'Écriture sur projets/contacts, lecture sur utilisateurs, suppression médias'
+        description: 'Accès complet projets/contacts, lecture utilisateurs'
       },
       'SSE': {
         permissions: [
           { domains: ['*'], level: 'read' }, // Lecture globale
-          { domains: ['system', 'security'], level: 'administration' }, // Administration sécurité
-          { domains: ['support'], level: 'support-service' } // Support service
+          { domains: ['system', 'security'], level: '*' } // Accès complet sécurité
         ],
-        description: 'Lecture globale + administration sécurité + support service'
+        description: 'Lecture globale + accès complet sécurité'
       },
       'SSESANSMDP': {
         permissions: [
           { domains: ['contact'], level: 'read' },
-          { domains: ['installation'], level: 'write' }, // Peut modifier installations
-          { domains: ['system'], level: 'export' } // Peut exporter données système
+          { domains: ['installation'], level: '*' } // Accès complet installation
         ],
-        description: 'Lecture contact, écriture installation, export système'
+        description: 'Lecture contact, accès complet installation'
       },
       'MOA': {
         permissions: [
           { domains: ['contact', 'project'], level: 'read' }, // Lecture métier
-          { domains: ['documentation'], level: 'write' }, // Peut modifier la doc
-          { domains: ['content'], level: 'export' } // Peut exporter le contenu
+          { domains: ['documentation'], level: '*' } // Accès complet documentation
         ],
-        description: 'Lecture contact/projets, écriture documentation, export contenu'
+        description: 'Lecture contact/projets, accès complet documentation'
       }
     };
   }
@@ -142,6 +138,40 @@ class OptimizedPermissionMigrator {
     }
 
     return permissions;
+  }
+
+  /**
+   * 🆕 Logique simplifiée : level '*' = permission la plus courte
+   * Si level = '*' → on donne api:domain (accès complet au domaine)
+   * Si domains = ['*'] et level = '*' → on donne 'api' (accès complet global)
+   */
+  private expandPermissionsWithWildcard(permissions: string[]): string[] {
+    const expandedPermissions = new Set(permissions);
+
+    for (const permission of permissions) {
+      // Si c'est déjà une permission complète, on la garde
+      if (permission === 'api' || permission === 'route') {
+        continue;
+      }
+
+      // Analyser les permissions API avec format api:domain:level
+      const apiMatch = permission.match(/^api:([^:]+):(.+)$/);
+      if (apiMatch) {
+        const [, domain, level] = apiMatch;
+
+        // Si level = '*', remplacer par la permission la plus courte
+        if (level === '*') {
+          expandedPermissions.delete(permission); // Supprimer l'ancienne
+          if (domain === '*') {
+            expandedPermissions.add('api'); // Accès global complet
+          } else {
+            expandedPermissions.add(`api:${domain}`); // Accès complet au domaine
+          }
+        }
+      }
+    }
+
+    return Array.from(expandedPermissions);
   }
 
   /**
@@ -243,6 +273,9 @@ class OptimizedPermissionMigrator {
           if (domains.includes('*')) {
             // Accès global
             switch (level) {
+              case '*':
+                permissions.push('api:*'); // Accès complet global (sera converti en 'api')
+                break;
               case 'administration':
                 permissions.push('api:*:administration');
                 break;
@@ -266,6 +299,9 @@ class OptimizedPermissionMigrator {
             // Accès par domaine spécifique
             for (const domain of domains) {
               switch (level) {
+                case '*':
+                  permissions.push(`api:${domain}:*`); // Sera converti en api:domain
+                  break;
                 case 'administration':
                   permissions.push(`api:${domain}:administration`);
                   break;
@@ -304,6 +340,11 @@ class OptimizedPermissionMigrator {
       }
 
       mapping[roleName] = [...new Set(permissions)];
+    }
+
+    // 🆕 Appliquer la logique wildcard simplifiée
+    for (const [roleName, permissions] of Object.entries(mapping)) {
+      mapping[roleName] = this.expandPermissionsWithWildcard(permissions);
     }
 
     return mapping;
@@ -395,6 +436,16 @@ class OptimizedPermissionMigrator {
         const apiPerms = permissionNames.filter(p => p.startsWith('api:'));
 
         console.log(`  ✅ ${roleName} (${newPermissions.length} permissions):`);
+
+        // 🆕 Afficher la conversion wildcard
+        const originalPermissions = roleMapping[roleName];
+        if (originalPermissions) {
+          const hasWildcard = originalPermissions.some(p => p.includes(':*'));
+          if (hasWildcard) {
+            console.log(`     🌟 Wildcard converted to shortest permissions`);
+          }
+        }
+
         if (routePerms.length > 0) {
           console.log(`     🚪 Routes: ${routePerms.join(', ')}`);
         }
