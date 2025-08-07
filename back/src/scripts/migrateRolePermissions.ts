@@ -12,6 +12,7 @@ import { DataSource } from 'typeorm';
 import { AppDataSource } from '../data-source';
 import { Role } from '../entities/Role';
 import { Permission } from '../entities/Permission';
+import { User } from '../entities/User';
 
 interface OldRoleStructure {
   [roleName: string]: {
@@ -26,20 +27,126 @@ interface OldRoleStructure {
     catalogue?: boolean;
     administration?: boolean;
     documentation?: boolean;
+    // 🆕 Définition du niveau d'accès API par rôle
+    apiLevel?: 'read' | 'write' | 'admin';
+    // 🆕 Domaines API spécifiques (optionnel)
+    apiDomains?: string[];
   };
+}
+
+// 🆕 Configuration des niveaux d'accès par rôle
+interface RoleApiConfig {
+  permissions: Array<{
+    domains: string[];
+    level: 'read' | 'write' | 'admin';
+  }>;
+  description: string;
 }
 
 class OptimizedPermissionMigrator {
   private dataSource: DataSource;
   private roleRepository: any;
   private permissionRepository: any;
+  private userRepository: any;
 
   constructor(dataSource: DataSource) {
     this.dataSource = dataSource;
     this.roleRepository = dataSource.getRepository(Role);
     this.permissionRepository = dataSource.getRepository(Permission);
+    this.userRepository = dataSource.getRepository(User);
   }
 
+  /**
+   * 🆕 Configuration des accès API par rôle
+   * Permet des niveaux multiples et des domaines différents
+   */
+  private getRoleApiConfiguration(): { [roleName: string]: RoleApiConfig } {
+    return {
+      'ADMINISTRATEUR': {
+        permissions: [
+          { domains: ['*'], level: 'admin' } // Administration globale
+        ],
+        description: 'Accès administration complet à toutes les API'
+      },
+      'CCN MULTIMEDIA': {
+        permissions: [
+          { domains: ['*'], level: 'admin' }, // Administration globale
+        ],
+        description: 'Administration complète sur toutes les API (technique avancé)'
+      },
+      'CHEF DE PROJET': {
+        permissions: [
+          { domains: ['contact', 'project'], level: 'write' }, // Écriture sur contact et projet
+          { domains: ['user'], level: 'read' } // Lecture sur user
+        ],
+        description: 'Écriture sur projets/contacts, lecture sur utilisateurs'
+      },
+      'SSE': {
+        permissions: [
+          { domains: ['*'], level: 'read' }, // Lecture globale
+          { domains: ['system', 'security'], level: 'admin' } // Admin sécurité
+        ],
+        description: 'Lecture globale + administration sécurité'
+      },
+      'SSESANSMDP': {
+        permissions: [
+          { domains: ['contact'], level: 'read' },
+          { domains: ['installation'], level: 'write' } // Peut modifier installations
+        ],
+        description: 'Lecture contact, écriture installation'
+      },
+      'MOA': {
+        permissions: [
+          { domains: ['contact', 'project'], level: 'read' }, // Lecture métier
+          { domains: ['documentation'], level: 'write' } // Peut modifier la doc
+        ],
+        description: 'Lecture contact/projets, écriture documentation'
+      }
+    };
+  }
+
+  /**
+   * 🆕 Génère les permissions API basées sur les niveaux d'accès
+   */
+  private generateApiPermissions(): Array<{name: string, description: string}> {
+    const permissions: Array<{name: string, description: string}> = [];
+
+    // Permissions globales
+    permissions.push(
+      { name: 'api', description: 'Accès complet à toutes les API' },
+      { name: 'api:*:read', description: 'Lecture simple sur toutes les API' },
+      { name: 'api:*:write', description: 'Écriture simple sur toutes les API' },
+      { name: 'api:*:administration', description: 'Administration sur toutes les API' },
+      { name: 'api:*:administration:read', description: 'Administration lecture sur toutes les API' },
+      { name: 'api:*:administration:write', description: 'Administration écriture sur toutes les API' }
+    );
+
+    // Domaines actifs (ajoutez selon vos besoins)
+    const activeDomains = ['contact', 'user', 'project', 'media', 'content', 'installation'];
+
+    for (const domain of activeDomains) {
+      permissions.push(
+        { name: `api:${domain}`, description: `Accès complet API ${domain}` },
+        { name: `api:${domain}:read`, description: `Lecture simple ${domain}` },
+        { name: `api:${domain}:write`, description: `Écriture simple ${domain}` },
+        { name: `api:${domain}:administration`, description: `Administration ${domain}` },
+        { name: `api:${domain}:administration:read`, description: `Administration ${domain} - lecture` },
+        { name: `api:${domain}:administration:write`, description: `Administration ${domain} - écriture` }
+      );
+    }
+
+    return permissions;
+  }
+
+  /**
+   * 🆕 Combine toutes les permissions (route + API)
+   */
+  private generateAllPermissions(): Array<{name: string, description: string}> {
+    return [
+      ...this.generateOptimizedPermissions(), // Permissions route existantes
+      ...this.generateApiPermissions()        // Nouvelles permissions API
+    ];
+  }
   /**
    * Génère les permissions optimisées pour les routes Angular
    * Structure hiérarchique basée sur vos anciennes permissions
@@ -65,15 +172,17 @@ class OptimizedPermissionMigrator {
   }
 
   /**
-   * Mapping direct de l'ancien système vers les nouvelles permissions route
+   * 🔄 Mapping étendu avec permissions API granulaires
    * Respecte la hiérarchie du général au particulier
    */
   private mapOldToOptimizedPermissions(oldStructure: OldRoleStructure): { [roleName: string]: string[] } {
     const mapping: { [roleName: string]: string[] } = {};
+    const roleApiConfig = this.getRoleApiConfiguration();
 
     for (const [roleName, perms] of Object.entries(oldStructure)) {
       const permissions: string[] = [];
 
+      // ✅ PERMISSIONS ROUTE (logique existante)
       // 🔍 Consultation - mapping direct
       if (perms.consultation?.annuaire) {
         permissions.push('route:consultation:annuaire');
@@ -98,17 +207,17 @@ class OptimizedPermissionMigrator {
         }
       }
 
-      // � Outils
+      // 🔧 Outils
       if (perms.outils?.support_service) {
         permissions.push('route:outils:support-service');
       }
 
-      // � Catalogue
+      // 📋 Catalogue
       if (perms.catalogue) {
         permissions.push('route:catalogue');
       }
 
-      // � Documentation
+      // 📚 Documentation
       if (perms.documentation) {
         permissions.push('route:documentation');
       }
@@ -118,12 +227,51 @@ class OptimizedPermissionMigrator {
         permissions.push('route:administration');
       }
 
+      // 🆕 PERMISSIONS API basées sur la configuration du rôle
+      const apiConfig = roleApiConfig[roleName];
+      if (apiConfig) {
+        // Traiter chaque permission du rôle
+        for (const permConfig of apiConfig.permissions) {
+          const { domains, level } = permConfig;
+
+          if (domains.includes('*')) {
+            // Accès global
+            switch (level) {
+              case 'admin':
+                permissions.push('api:*:administration');
+                break;
+              case 'write':
+                permissions.push('api:*:write');
+                break;
+              case 'read':
+                permissions.push('api:*:read');
+                break;
+            }
+          } else {
+            // Accès par domaine spécifique
+            for (const domain of domains) {
+              switch (level) {
+                case 'admin':
+                  permissions.push(`api:${domain}:administration`);
+                  break;
+                case 'write':
+                  permissions.push(`api:${domain}:write`);
+                  break;
+                case 'read':
+                  permissions.push(`api:${domain}:read`);
+                  break;
+              }
+            }
+          }
+        }
+      }
+
       // 🎯 Permissions spéciales selon le niveau du rôle
       switch (roleName) {
         case 'ADMINISTRATEUR':
           // Admin = accès à tout (permission la plus générale)
           permissions.length = 0;
-          permissions.push('route');
+          permissions.push('route', 'api');
           break;
 
         default:
@@ -146,10 +294,10 @@ class OptimizedPermissionMigrator {
     await queryRunner.startTransaction();
 
     try {
-      console.log('🔄 Starting optimized permission migration...');
+      console.log('🔄 Starting complete migration (routes + API)...');
 
-      // 1. Créer toutes les permissions
-      const allPermissions = this.generateOptimizedPermissions();
+      // 1. Créer toutes les permissions (route + API)
+      const allPermissions = this.generateAllPermissions();
 
       console.log(`📝 Creating ${allPermissions.length} permissions...`);
       for (const permData of allPermissions) {
@@ -188,7 +336,7 @@ class OptimizedPermissionMigrator {
           console.log(`  📋 Creating new role: ${roleName}`);
           role = queryRunner.manager.create(Role, {
             name: roleName,
-            description: `Role ${roleName} migrated with optimized permissions`,
+            description: `Role ${roleName} migrated with route and API permissions`,
             isActive: true,
             createdAt: new Date(),
             updatedAt: new Date(),
@@ -220,12 +368,17 @@ class OptimizedPermissionMigrator {
 
         // Affichage détaillé
         const routePerms = permissionNames.filter(p => p.startsWith('route:'));
+        const apiPerms = permissionNames.filter(p => p.startsWith('api:'));
 
         console.log(`  ✅ ${roleName} (${newPermissions.length} permissions):`);
         if (routePerms.length > 0) {
           console.log(`     🚪 Routes: ${routePerms.join(', ')}`);
-        } else {
-          console.log(`     � Routes: Aucune permission route`);
+        }
+        if (apiPerms.length > 0) {
+          console.log(`     🔌 API: ${apiPerms.join(', ')}`);
+        }
+        if (routePerms.length === 0 && apiPerms.length === 0) {
+          console.log(`     ⚠️ Aucune permission`);
         }
       }
 
@@ -245,31 +398,76 @@ class OptimizedPermissionMigrator {
   }
 
   /**
-   * Affichage du résumé final - focalisé sur les permissions route
+   * 🔄 Affichage du résumé final - routes et API
    */
   private async displaySummary(): Promise<void> {
-    console.log('\n=== RÉSUMÉ DE LA MIGRATION (ROUTES) ===');
+    console.log('\n=== RÉSUMÉ DE LA MIGRATION (ROUTES + API) ===');
 
     const roles = await this.roleRepository.find({
       relations: ['permissions'],
       order: { name: 'ASC' }
     });
 
+    const roleApiConfig = this.getRoleApiConfiguration();
+
     for (const role of roles) {
       console.log(`\n📋 ${role.name}:`);
+
+      // Configuration API pour ce rôle
+      const apiConfig = roleApiConfig[role.name];
+      if (apiConfig) {
+        console.log(`   💬 ${apiConfig.description}`);
+        console.log(`   🎯 API Permissions:`);
+        for (const permConfig of apiConfig.permissions) {
+          const domainsList = permConfig.domains.join(', ');
+          console.log(`      - ${permConfig.level.toUpperCase()} sur ${domainsList}`);
+        }
+      }
 
       const routePermissions = role.permissions
         .filter((perm: Permission) => perm.name.startsWith('route:'))
         .map((perm: Permission) => perm.name)
         .sort();
 
+      const apiPermissions = role.permissions
+        .filter((perm: Permission) => perm.name.startsWith('api:'))
+        .map((perm: Permission) => perm.name)
+        .sort();
+
       if (routePermissions.length > 0) {
         console.log(`   🚪 Routes (${routePermissions.length}):`);
         routePermissions.forEach((perm: string) => console.log(`      - ${perm}`));
-      } else {
-        console.log('   - Aucune permission route');
+      }
+
+      if (apiPermissions.length > 0) {
+        console.log(`   🔌 API (${apiPermissions.length}):`);
+        apiPermissions.forEach((perm: string) => console.log(`      - ${perm}`));
+      }
+
+      if (routePermissions.length === 0 && apiPermissions.length === 0) {
+        console.log('   - Aucune permission');
       }
     }
+
+    // 🆕 Tableau récapitulatif des niveaux d'accès
+    console.log('\n=== NIVEAUX D\'ACCÈS API PAR RÔLE ===');
+    console.log('┌─────────────────────┬─────────────────────────────────────────────┐');
+    console.log('│ RÔLE                │ PERMISSIONS API                             │');
+    console.log('├─────────────────────┼─────────────────────────────────────────────┤');
+
+    for (const [roleName, config] of Object.entries(roleApiConfig)) {
+      const role = roleName.padEnd(19);
+      let permissionsText = '';
+
+      for (const permConfig of config.permissions) {
+        const domainsList = permConfig.domains.join(',');
+        permissionsText += `${permConfig.level}:${domainsList} `;
+      }
+
+      const permissions = permissionsText.trim().padEnd(43);
+      console.log(`│ ${role} │ ${permissions} │`);
+    }
+    console.log('└─────────────────────┴─────────────────────────────────────────────┘');
   }
 
   /**
@@ -347,9 +545,9 @@ async function runPermissionMigration(): Promise<void> {
     console.log('');
     console.log('Next steps:');
     console.log('1. Update your frontend route guards to use the new route: permissions');
-    console.log('2. The Angular permission guards will now work with the hierarchical system');
+    console.log('2. Update your backend API endpoints to use the new api: permissions');
     console.log('3. Test the new permission system with your existing matchesPermission logic');
-    console.log('4. API permissions should be handled separately from route permissions');
+    console.log('4. Use the hierarchical API permissions for granular access control');
 
   } catch (error) {
     console.error('❌ Migration failed:', error);
