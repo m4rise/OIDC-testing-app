@@ -28,7 +28,7 @@ interface OldRoleStructure {
     administration?: boolean;
     documentation?: boolean;
     // 🆕 Définition du niveau d'accès API par rôle
-    apiLevel?: 'read' | 'write' | 'admin';
+    apiLevel?: 'read' | 'write' | 'delete' | 'export' | 'support-service' | 'administration';
     // 🆕 Domaines API spécifiques (optionnel)
     apiDomains?: string[];
   };
@@ -38,7 +38,7 @@ interface OldRoleStructure {
 interface RoleApiConfig {
   permissions: Array<{
     domains: string[];
-    level: 'read' | 'write' | 'admin';
+    level: 'read' | 'write' | 'delete' | 'export' | 'support-service' | 'administration';
   }>;
   description: string;
 }
@@ -64,43 +64,47 @@ class OptimizedPermissionMigrator {
     return {
       'ADMINISTRATEUR': {
         permissions: [
-          { domains: ['*'], level: 'admin' } // Administration globale
+          { domains: ['*'], level: 'administration' } // Administration globale
         ],
         description: 'Accès administration complet à toutes les API'
       },
       'CCN MULTIMEDIA': {
         permissions: [
-          { domains: ['*'], level: 'admin' }, // Administration globale
+          { domains: ['*'], level: 'administration' }, // Administration globale
         ],
         description: 'Administration complète sur toutes les API (technique avancé)'
       },
       'CHEF DE PROJET': {
         permissions: [
           { domains: ['contact', 'project'], level: 'write' }, // Écriture sur contact et projet
-          { domains: ['user'], level: 'read' } // Lecture sur user
+          { domains: ['user'], level: 'read' }, // Lecture sur user
+          { domains: ['media'], level: 'delete' } // Peut supprimer des médias
         ],
-        description: 'Écriture sur projets/contacts, lecture sur utilisateurs'
+        description: 'Écriture sur projets/contacts, lecture sur utilisateurs, suppression médias'
       },
       'SSE': {
         permissions: [
           { domains: ['*'], level: 'read' }, // Lecture globale
-          { domains: ['system', 'security'], level: 'admin' } // Admin sécurité
+          { domains: ['system', 'security'], level: 'administration' }, // Administration sécurité
+          { domains: ['support'], level: 'support-service' } // Support service
         ],
-        description: 'Lecture globale + administration sécurité'
+        description: 'Lecture globale + administration sécurité + support service'
       },
       'SSESANSMDP': {
         permissions: [
           { domains: ['contact'], level: 'read' },
-          { domains: ['installation'], level: 'write' } // Peut modifier installations
+          { domains: ['installation'], level: 'write' }, // Peut modifier installations
+          { domains: ['system'], level: 'export' } // Peut exporter données système
         ],
-        description: 'Lecture contact, écriture installation'
+        description: 'Lecture contact, écriture installation, export système'
       },
       'MOA': {
         permissions: [
           { domains: ['contact', 'project'], level: 'read' }, // Lecture métier
-          { domains: ['documentation'], level: 'write' } // Peut modifier la doc
+          { domains: ['documentation'], level: 'write' }, // Peut modifier la doc
+          { domains: ['content'], level: 'export' } // Peut exporter le contenu
         ],
-        description: 'Lecture contact/projets, écriture documentation'
+        description: 'Lecture contact/projets, écriture documentation, export contenu'
       }
     };
   }
@@ -116,22 +120,24 @@ class OptimizedPermissionMigrator {
       { name: 'api', description: 'Accès complet à toutes les API' },
       { name: 'api:*:read', description: 'Lecture simple sur toutes les API' },
       { name: 'api:*:write', description: 'Écriture simple sur toutes les API' },
-      { name: 'api:*:administration', description: 'Administration sur toutes les API' },
-      { name: 'api:*:administration:read', description: 'Administration lecture sur toutes les API' },
-      { name: 'api:*:administration:write', description: 'Administration écriture sur toutes les API' }
+      { name: 'api:*:delete', description: 'Suppression sur toutes les API' },
+      { name: 'api:*:export', description: 'Export de données sur toutes les API' },
+      { name: 'api:*:support-service', description: 'Support service sur toutes les API' },
+      { name: 'api:*:administration', description: 'Administration sur toutes les API' }
     );
 
     // Domaines actifs (ajoutez selon vos besoins)
-    const activeDomains = ['contact', 'user', 'project', 'media', 'content', 'installation'];
+    const activeDomains = ['contact', 'user', 'project', 'media', 'content', 'installation', 'system', 'security', 'support', 'documentation'];
 
     for (const domain of activeDomains) {
       permissions.push(
         { name: `api:${domain}`, description: `Accès complet API ${domain}` },
         { name: `api:${domain}:read`, description: `Lecture simple ${domain}` },
         { name: `api:${domain}:write`, description: `Écriture simple ${domain}` },
-        { name: `api:${domain}:administration`, description: `Administration ${domain}` },
-        { name: `api:${domain}:administration:read`, description: `Administration ${domain} - lecture` },
-        { name: `api:${domain}:administration:write`, description: `Administration ${domain} - écriture` }
+        { name: `api:${domain}:delete`, description: `Suppression ${domain}` },
+        { name: `api:${domain}:export`, description: `Export de données ${domain}` },
+        { name: `api:${domain}:support-service`, description: `Support service ${domain}` },
+        { name: `api:${domain}:administration`, description: `Administration ${domain}` }
       );
     }
 
@@ -237,8 +243,17 @@ class OptimizedPermissionMigrator {
           if (domains.includes('*')) {
             // Accès global
             switch (level) {
-              case 'admin':
+              case 'administration':
                 permissions.push('api:*:administration');
+                break;
+              case 'support-service':
+                permissions.push('api:*:support-service');
+                break;
+              case 'export':
+                permissions.push('api:*:export');
+                break;
+              case 'delete':
+                permissions.push('api:*:delete');
                 break;
               case 'write':
                 permissions.push('api:*:write');
@@ -251,8 +266,17 @@ class OptimizedPermissionMigrator {
             // Accès par domaine spécifique
             for (const domain of domains) {
               switch (level) {
-                case 'admin':
+                case 'administration':
                   permissions.push(`api:${domain}:administration`);
+                  break;
+                case 'support-service':
+                  permissions.push(`api:${domain}:support-service`);
+                  break;
+                case 'export':
+                  permissions.push(`api:${domain}:export`);
+                  break;
+                case 'delete':
+                  permissions.push(`api:${domain}:delete`);
                   break;
                 case 'write':
                   permissions.push(`api:${domain}:write`);
